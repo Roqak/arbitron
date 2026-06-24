@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/fmt.dart';
 import '../../core/widgets/widgets.dart';
+import 'backtest_sheet.dart';
 
 /// Strategies screen — list + editor. See PRD §8.3.
 class StrategiesScreen extends StatelessWidget {
@@ -31,7 +32,7 @@ class StrategiesScreen extends StatelessWidget {
                       itemCount: state.strategies.length,
                       itemBuilder: (context, i) {
                         final s = state.strategies[i];
-                        return Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _StrategyCard(strategy: s, onTap: () => _showEditor(context, s)));
+                        return Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _StrategyCard(strategy: s, onTap: () => _showEditor(context, s), onBacktest: () => _showBacktest(context, s)));
                       },
                     ),
                   ),
@@ -58,6 +59,15 @@ class StrategiesScreen extends StatelessWidget {
       builder: (_) => _StrategyEditorSheet(existing: existing),
     );
   }
+
+  void _showBacktest(BuildContext context, Strategy strategy) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => BacktestSheet(strategy: strategy),
+    );
+  }
 }
 
 class _Header extends StatelessWidget {
@@ -77,7 +87,8 @@ class _Header extends StatelessWidget {
 class _StrategyCard extends StatelessWidget {
   final Strategy strategy;
   final VoidCallback onTap;
-  const _StrategyCard({required this.strategy, required this.onTap});
+  final VoidCallback onBacktest;
+  const _StrategyCard({required this.strategy, required this.onTap, required this.onBacktest});
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +131,16 @@ class _StrategyCard extends StatelessWidget {
               Text(Fmt.signedUsd(strategy.totalPnl),
                   style: theme.textTheme.labelMedium!.copyWith(
                       color: positive ? theme.success : theme.danger, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: onBacktest,
+                icon: const Icon(Icons.science_outlined, size: 16),
+                label: const Text('Backtest'),
+              ),
             ],
           ),
         ],
