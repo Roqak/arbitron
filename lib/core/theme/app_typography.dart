@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Typography tokens. Numeric styles apply [FontFeature.tabularFigures] — see
-/// DESIGN.md §3.2. Always prefer these via [TextTheme] from [AppTheme.of].
+/// Dual-typeface system: Inter for prose/labels, JetBrains Mono for all
+/// numeric data. See PRODUCT.md — numbers are the hero.
 class AppTypography {
   AppTypography._();
 
@@ -10,17 +10,29 @@ class AppTypography {
     final base = GoogleFonts.interTextTheme(
       brightness == Brightness.dark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
     );
-    // Apply tabular figures to styles used for numbers.
-    return base.copyWith(
-      displayMedium: base.displayMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      headlineSmall: base.headlineSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      titleLarge: base.titleLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      titleMedium: base.titleMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      bodyLarge: base.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      bodyMedium: base.bodyMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      bodySmall: base.bodySmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      labelLarge: base.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-      labelMedium: base.labelMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    return base;
+  }
+
+  /// Monospace text theme for numeric data.
+  static TextTheme monoTextTheme(Brightness brightness) {
+    return GoogleFonts.jetBrainsMonoTextTheme(
+      brightness == Brightness.dark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
+    );
+  }
+
+  /// Returns a mono [TextStyle] for numeric display.
+  static TextStyle mono({
+    double size = 14,
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+    double height = 1.4,
+  }) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: height,
+      fontFeatures: const [FontFeature.tabularFigures()],
     );
   }
 }

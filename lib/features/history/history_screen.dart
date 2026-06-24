@@ -5,19 +5,18 @@ import '../../core/domain/trade.dart';
 import '../../core/domain/exchange.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/utils/fmt.dart';
 import '../../core/widgets/widgets.dart';
 
-/// History screen — immutable trade log. See PRD §8.5.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
-
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  _TradeFilter _filter = _TradeFilter.all;
+  _Filter _filter = _Filter.all;
 
   @override
   Widget build(BuildContext context) {
@@ -26,76 +25,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: BlocBuilder<AppCubit, AppState>(
           buildWhen: (a, b) => a.trades != b.trades,
           builder: (context, state) {
-            final trades = state.trades.where((t) {
-              switch (_filter) {
-                case _TradeFilter.all: return true;
-                case _TradeFilter.profit: return t.profit;
-                case _TradeFilter.loss: return !t.profit;
-              }
-            }).toList();
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.md, AppSpacing.screenH, 0), child: _Header())),
-                SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenH, vertical: AppSpacing.md), child: _FilterBar(filter: _filter, onChanged: (f) => setState(() => _filter = f)))),
-                if (trades.isEmpty)
-                  const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.history_outlined, title: 'No trades yet', body: 'Executed trades will appear here with full audit details.'))
-                else
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl + 72),
-                    sliver: SliverList.builder(
-                      itemCount: trades.length,
-                      itemBuilder: (context, i) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _TradeCard(trade: trades[i], onTap: () => _showDetail(context, trades[i]))),
-                    ),
-                  ),
-              ],
-            );
+            final trades = state.trades.where((t) => switch (_filter) { _Filter.all => true, _Filter.profit => t.profit, _Filter.loss => !t.profit }).toList();
+            return CustomScrollView(slivers: [
+              SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.md, AppSpacing.screenH, AppSpacing.sm), child: _Header(count: state.trades.length))),
+              SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenH, vertical: AppSpacing.sm), child: SegmentedControl<_Filter>(segments: const [Segment(_Filter.all, 'ALL'), Segment(_Filter.profit, 'GAIN'), Segment(_Filter.loss, 'LOSS')], selected: _filter, onChanged: (f) => setState(() => _filter = f)))),
+              if (trades.isEmpty)
+                const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.history_outlined, title: 'No trades yet', body: 'Executed trades will appear here with full audit details.'))
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl + 56),
+                  sliver: SliverList.builder(itemCount: trades.length, itemBuilder: (context, i) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _TradeCard(trade: trades[i], onTap: () => _showDetail(context, trades[i])))),
+                ),
+            ]);
           },
         ),
       ),
     );
   }
 
-  void _showDetail(BuildContext context, TradeRecord t) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _TradeDetailSheet(trade: t),
-    );
-  }
+  void _showDetail(BuildContext context, TradeRecord t) => showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true, builder: (_) => _TradeDetailSheet(trade: t));
 }
 
-enum _TradeFilter { all, profit, loss }
+enum _Filter { all, profit, loss }
 
 class _Header extends StatelessWidget {
+  final int count;
+  const _Header({required this.count});
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text('History', style: theme.textTheme.displayMedium!.copyWith(fontWeight: FontWeight.w700)),
-        BlocBuilder<AppCubit, AppState>(
-          buildWhen: (a, b) => a.trades.length != b.trades.length,
-          builder: (context, state) => Text('${state.trades.length} trades', style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-        ),
-      ],
-    );
-  }
-}
-
-class _FilterBar extends StatelessWidget {
-  final _TradeFilter filter;
-  final void Function(_TradeFilter) onChanged;
-  const _FilterBar({required this.filter, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return SegmentedControl<_TradeFilter>(
-      segments: const [Segment(_TradeFilter.all, 'All'), Segment(_TradeFilter.profit, 'Profit'), Segment(_TradeFilter.loss, 'Loss')],
-      selected: filter,
-      onChanged: onChanged,
-    );
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text('HISTORY', style: AppTypography.mono(size: 16, weight: FontWeight.w700, color: theme.textPrimary)),
+      MonoText('$count trades', size: 11, weight: FontWeight.w400, color: theme.textMuted),
+    ]);
   }
 }
 
@@ -108,49 +70,32 @@ class _TradeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final positive = trade.profit;
-    return ArbitronCard(
+    final color = positive ? theme.success : theme.danger;
+    return ArbitronPanel(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(trade.pair, style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text('${ExchangeCatalog.byId(trade.buyExchangeId).name} \u2192 ${ExchangeCatalog.byId(trade.sellExchangeId).name}',
-                        style: theme.textTheme.labelMedium!.copyWith(color: theme.textSecondary)),
-                    const SizedBox(height: 4),
-                    Text(trade.strategyName, style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(Fmt.signedUsd(trade.netPnl),
-                      style: theme.textTheme.titleLarge!.copyWith(color: positive ? theme.success : theme.danger, fontWeight: FontWeight.w600)),
-                  Text(Fmt.dateTime(trade.executedAt), style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              ModeChip(mode: trade.mode, compact: true),
-              const SizedBox(width: 8),
-              Text('Size ${Fmt.compactUsd(trade.sizeUsd)}', style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-              const Spacer(),
-              Icon(positive ? Icons.trending_up : Icons.trending_down, size: 16, color: positive ? theme.success : theme.danger),
-            ],
-          ),
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            MonoText(trade.pair, size: 15, weight: FontWeight.w600, color: theme.textPrimary),
+            const SizedBox(height: 2),
+            MonoText('${ExchangeCatalog.byId(trade.buyExchangeId).name.split(" ").first} \u2192 ${ExchangeCatalog.byId(trade.sellExchangeId).name.split(" ").first}', size: 11, color: theme.textSecondary),
+            const SizedBox(height: 2),
+            Text(trade.strategyName, style: theme.textTheme.labelSmall?.copyWith(color: theme.textMuted)),
+          ])),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            MonoText(Fmt.signedUsd(trade.netPnl), size: 15, weight: FontWeight.w600, color: color),
+            MonoText(Fmt.dateTime(trade.executedAt), size: 11, color: theme.textMuted),
+          ]),
+        ]),
+        const SizedBox(height: AppSpacing.sm),
+        Row(children: [
+          ModeChip(mode: trade.mode, compact: true),
+          const SizedBox(width: 8),
+          MonoText('SIZE ${Fmt.compactUsd(trade.sizeUsd)}', size: 11, color: theme.textMuted),
+          const Spacer(),
+          Icon(positive ? Icons.trending_up : Icons.trending_down, size: 14, color: color),
+        ]),
+      ]),
     );
   }
 }
@@ -163,90 +108,41 @@ class _TradeDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final positive = trade.profit;
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          color: theme.surfaceOverlay,
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.xxxl),
-            children: [
-              Center(child: Container(width: 32, height: 4, decoration: BoxDecoration(color: theme.borderStrong, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: AppSpacing.xl),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(trade.pair, style: theme.textTheme.displayMedium!.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 6),
-                        Text('${ExchangeCatalog.byId(trade.buyExchangeId).name} \u2192 ${ExchangeCatalog.byId(trade.sellExchangeId).name}',
-                            style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary)),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(Fmt.signedUsd(trade.netPnl), style: theme.textTheme.displayMedium!.copyWith(color: positive ? theme.success : theme.danger, fontWeight: FontWeight.w700)),
-                      Text(Fmt.dateTime(trade.executedAt), style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              ArbitronCard(
-                child: Column(
-                  children: [
-                    _DetailRow(label: 'Strategy', value: trade.strategyName),
-                    _DetailRow(label: 'Mode', value: trade.mode.label),
-                    _DetailRow(label: 'Size', value: Fmt.usd(trade.sizeUsd)),
-                    _DetailRow(label: 'Entry price', value: '\$${Fmt.price(trade.entryPrice)}'),
-                    _DetailRow(label: 'Exit price', value: '\$${Fmt.price(trade.exitPrice)}'),
-                    _DetailRow(label: 'Gross P&L', value: Fmt.signedUsd(trade.grossPnl), color: trade.grossPnl >= 0 ? theme.success : theme.danger),
-                    _DetailRow(label: 'Fees', value: Fmt.usd(trade.feesUsd)),
-                    _DetailRow(label: 'Slippage', value: Fmt.usd(trade.slippageUsd)),
-                    _DetailRow(label: 'Net P&L', value: Fmt.signedUsd(trade.netPnl), color: positive ? theme.success : theme.danger, bold: true),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Text('AI Debrief', style: theme.textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(height: AppSpacing.md),
-              AiAnalysisBlock(text: trade.debrief, title: 'Post-trade analysis', showDisclaimer: false),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-  final bool bold;
-  const _DetailRow({required this.label, required this.value, this.color, this.bold = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary)),
-          Text(value, style: theme.textTheme.bodyMedium!.copyWith(color: color ?? theme.textPrimary, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, fontFeatures: const [FontFeature.tabularFigures()])),
+    final color = positive ? theme.success : theme.danger;
+    return DraggableScrollableSheet(initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false, builder: (context, sc) {
+      return Container(color: theme.surfaceOverlay, child: ListView(controller: sc, padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.xxxl), children: [
+        Center(child: Container(width: 32, height: 4, decoration: BoxDecoration(color: theme.borderStrong, borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: AppSpacing.xl),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            MonoText(trade.pair, size: 22, weight: FontWeight.w700, color: theme.textPrimary),
+            const SizedBox(height: 4),
+            MonoText('${ExchangeCatalog.byId(trade.buyExchangeId).name} \u2192 ${ExchangeCatalog.byId(trade.sellExchangeId).name}', size: 12, color: theme.textSecondary),
+          ])),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            MonoText(Fmt.signedUsd(trade.netPnl), size: 22, weight: FontWeight.w700, color: color),
+            MonoText(Fmt.dateTime(trade.executedAt), size: 11, color: theme.textMuted),
+          ]),
+        ]),
+        const SizedBox(height: AppSpacing.xl),
+        Hairline(),
+        const SizedBox(height: AppSpacing.lg),
+        DataKV(label: 'Strategy', value: trade.strategyName),
+        DataKV(label: 'Mode', value: trade.mode.label),
+        DataKV(label: 'Size', value: Fmt.usd(trade.sizeUsd)),
+        DataKV(label: 'Entry', value: '\$${Fmt.price(trade.entryPrice)}'),
+        DataKV(label: 'Exit', value: '\$${Fmt.price(trade.exitPrice)}'),
+        DataKV(label: 'Gross P&L', value: Fmt.signedUsd(trade.grossPnl), valueColor: trade.grossPnl >= 0 ? theme.success : theme.danger),
+        DataKV(label: 'Fees', value: Fmt.usd(trade.feesUsd)),
+        DataKV(label: 'Slippage', value: Fmt.usd(trade.slippageUsd)),
+        DataKV(label: 'Net P&L', value: Fmt.signedUsd(trade.netPnl), valueColor: color, valueBold: true),
+        if (trade.debrief.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Text('DEBRIEF', style: AppTypography.mono(size: 10, weight: FontWeight.w600, color: theme.textMuted)),
+          const SizedBox(height: 8),
+          AiAnalysisBlock(text: trade.debrief, title: 'Post-trade', showDisclaimer: false),
         ],
-      ),
-    );
+      ]));
+    });
   }
 }

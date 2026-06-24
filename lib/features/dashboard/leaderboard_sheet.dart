@@ -57,7 +57,7 @@ class _LeaderboardSheetState extends State<LeaderboardSheet> {
               Text('Risk-adjusted P&L ranking. Opt in to share your stats and see your rank.', style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
               const SizedBox(height: AppSpacing.lg),
               // Opt-in toggle
-              ArbitronCard(
+              ArbitronPanel(
                 child: Row(
                   children: [
                     Expanded(
@@ -136,7 +136,7 @@ class _LeaderboardRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: ArbitronCard(
+      child: ArbitronPanel(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
         child: Row(
           children: [
@@ -179,7 +179,7 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: isYou ? theme.accent : theme.borderSubtle, width: 1.5),
       ),
-      child: Center(child: Text(letter, style: TextStyle(color: isYou ? theme.background : theme.textSecondary, fontSize: size * 0.45, fontWeight: FontWeight.w700))),
+      child: Center(child: Text(letter, style: TextStyle(color: isYou ? theme.bg : theme.textSecondary, fontSize: size * 0.45, fontWeight: FontWeight.w700))),
     );
   }
 }

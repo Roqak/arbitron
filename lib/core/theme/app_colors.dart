@@ -1,118 +1,98 @@
 import 'package:flutter/material.dart';
 
-/// Semantic color tokens for Arbitron.
+/// Terminal-native color system for Arbitron v2.
 ///
-/// Never reference raw hex values in feature code. Always use these tokens or
-/// the [AppTheme] / [ColorScheme] they feed. See DESIGN.md §2.
+/// A tinted blue-black neutral ramp + one electric cyan accent. Semantic
+/// colors carry the only other chroma. No gradients, no decorative color.
+/// See PRODUCT.md and DESIGN.md.
 class AppColors {
   AppColors._();
 
-  // ── Dark theme ────────────────────────────────────────────────────────────
-  static const Color _darkBackground = Color(0xFF0A0E14);
-  static const Color _darkSurface = Color(0xFF121821);
-  static const Color _darkSurfaceRaised = Color(0xFF1A2330);
-  static const Color _darkBorderSubtle = Color(0xFF1F2937);
-  static const Color _darkBorderStrong = Color(0xFF2D3A4F);
-  static const Color _darkTextPrimary = Color(0xFFF1F5F9);
-  static const Color _darkTextSecondary = Color(0xFF94A3B8);
-  static const Color _darkTextMuted = Color(0xFF64748B);
-  static const Color accent = Color(0xFF34F5A0);
-  static const Color accentDim = Color(0xFF0F3D2E);
-  static const Color success = Color(0xFF34F5A0);
-  static const Color danger = Color(0xFFFF5470);
-  static const Color dangerDim = Color(0xFF3D0F1A);
+  // ── Dark theme (default) ───────────────────────────────────────────────────
+  // Blue-black ramp, all tinted cool. 5 steps.
+  static const Color _dBg = Color(0xFF070A0F);      // deepest — app canvas
+  static const Color _dSurface = Color(0xFF0D1117); // panels, list items
+  static const Color _dRaised = Color(0xFF151B24);  // inputs, nested surfaces
+  static const Color _dBorder = Color(0xFF1E2632);  // hairline dividers
+  static const Color _dBorderFoc = Color(0xFF2A3645); // focused inputs
+
+  // Text
+  static const Color _dText = Color(0xFFE6EDF3);     // primary
+  static const Color _dText2 = Color(0xFF8B95A5);    // secondary
+  static const Color _dText3 = Color(0xFF5C6470);    // muted
+
+  // Semantic — dark
+  static const Color accent = Color(0xFF00E5CC);      // electric cyan
+  static const Color accentDim = Color(0xFF0A2926);
+  static const Color success = Color(0xFF00E5CC);     // profit = accent
+  static const Color danger = Color(0xFFFF5C7A);      // loss
+  static const Color dangerDim = Color(0xFF2A0E14);
   static const Color warning = Color(0xFFFFB547);
-  static const Color warningDim = Color(0xFF3D2E0F);
-  static const Color info = Color(0xFF5B9DFF);
-  static const Color infoDim = Color(0xFF0F2A3D);
+  static const Color warningDim = Color(0xFF2A2010);
+  static const Color ai = Color(0xFF8B7BFF);          // violet — AI/system
+  static const Color aiDim = Color(0xFF1A1628);
 
-  // ── Light theme ───────────────────────────────────────────────────────────
-  static const Color _lightBackground = Color(0xFFF7F9FC);
-  static const Color _lightSurface = Color(0xFFFFFFFF);
-  static const Color _lightSurfaceRaised = Color(0xFFF1F5F9);
-  static const Color _lightBorderSubtle = Color(0xFFE2E8F0);
-  static const Color _lightBorderStrong = Color(0xFFCBD5E1);
-  static const Color _lightTextPrimary = Color(0xFF0F172A);
-  static const Color _lightTextSecondary = Color(0xFF475569);
-  static const Color _lightTextMuted = Color(0xFF94A3B8);
-  static const Color _lightAccent = Color(0xFF0FB372);
-  static const Color _lightAccentDim = Color(0xFFD6F5E8);
-  static const Color _lightDanger = Color(0xFFE11D48);
-  static const Color _lightDangerDim = Color(0xFFFCE7ED);
-  static const Color _lightWarning = Color(0xFFD97706);
-  static const Color _lightWarningDim = Color(0xFFFEF3C7);
-  static const Color _lightInfo = Color(0xFF2563EB);
-  static const Color _lightInfoDim = Color(0xFFDBEAFE);
+  // ── Light theme ─────────────────────────────────────────────────────────────
+  static const Color _lBg = Color(0xFFF2F4F8);
+  static const Color _lSurface = Color(0xFFFFFFFF);
+  static const Color _lRaised = Color(0xFFEBEDF2);
+  static const Color _lBorder = Color(0xFFD8DCE3);
+  static const Color _lBorderFoc = Color(0xFFB8BFCA);
+  static const Color _lText = Color(0xFF0E1116);
+  static const Color _lText2 = Color(0xFF4A5260);
+  static const Color _lText3 = Color(0xFF8A909C);
+  static const Color _lAccent = Color(0xFF00B89A);
+  static const Color _lAccentDim = Color(0xFFCDF3EC);
+  static const Color _lDanger = Color(0xFFD11D48);
+  static const Color _lDangerDim = Color(0xFFFBE2E8);
+  static const Color _lWarning = Color(0xFFB86E00);
+  static const Color _lWarningDim = Color(0xFFFCEFD4);
+  static const Color _lAi = Color(0xFF6B4FDB);
+  static const Color _lAiDim = Color(0xFFEBE6FA);
 
-  /// Builds the dark [ColorScheme]. Custom slots are stashed on `surface*` and
-  /// `outline*` fields; see [AppTheme.of] for the ergonomic accessors.
-  static ColorScheme darkScheme() {
-    return const ColorScheme(
-      brightness: Brightness.dark,
-      primary: accent,
-      onPrimary: _darkBackground,
-      secondary: info,
-      onSecondary: _darkBackground,
-      error: danger,
-      onError: _darkBackground,
-      surface: _darkSurface,
-      onSurface: _darkTextPrimary,
-      // Extended semantic slots (not part of Material's base contract but
-      // honoured by [AppTheme.of]).
-      surfaceContainerLowest: _darkBackground,
-      surfaceContainerLow: _darkSurface,
-      surfaceContainerHighest: _darkSurfaceRaised,
-      surfaceContainer: _darkSurfaceRaised,
-      onSurfaceVariant: _darkTextSecondary,
-      outline: _darkBorderStrong,
-      outlineVariant: _darkBorderSubtle,
-      tertiary: warning,
-      onTertiary: _darkBackground,
-    );
-  }
+  // Public accessors for theme extension (private fields can't be accessed
+  // from outside the class).
+  static const Color darkOverlay = Color(0xFF1B2330);
+  static const Color lightOverlay = Color(0xFFFFFFFF);
+  static const Color lightSuccess = Color(0xFF00B89A);
+  static const Color lightAi = Color(0xFF6B4FDB);
 
-  static ColorScheme lightScheme() {
-    return const ColorScheme(
-      brightness: Brightness.light,
-      primary: _lightAccent,
-      onPrimary: Colors.white,
-      secondary: _lightInfo,
-      onSecondary: Colors.white,
-      error: _lightDanger,
-      onError: Colors.white,
-      surface: _lightSurface,
-      onSurface: _lightTextPrimary,
-      surfaceContainerLowest: _lightBackground,
-      surfaceContainerLow: _lightSurface,
-      surfaceContainerHighest: _lightSurfaceRaised,
-      surfaceContainer: _lightSurfaceRaised,
-      onSurfaceVariant: _lightTextSecondary,
-      outline: _lightBorderStrong,
-      outlineVariant: _lightBorderSubtle,
-      tertiary: _lightWarning,
-      onTertiary: Colors.white,
-    );
-  }
+  static ColorScheme darkScheme() => const ColorScheme(
+        brightness: Brightness.dark,
+        primary: accent, onPrimary: _dBg,
+        secondary: ai, onSecondary: _dBg,
+        error: danger, onError: _dBg,
+        surface: _dSurface, onSurface: _dText,
+        surfaceContainerLowest: _dBg,
+        surfaceContainerLow: _dSurface,
+        surfaceContainerHighest: _dRaised,
+        surfaceContainer: _dRaised,
+        onSurfaceVariant: _dText2,
+        outline: _dBorderFoc,
+        outlineVariant: _dBorder,
+        tertiary: warning, onTertiary: _dBg,
+      );
 
-  // Convenience accessors for the dim backgrounds used by chips/badges.
-  static const Map<Brightness, Color> accentDimByBrightness = {
-    Brightness.dark: accentDim,
-    Brightness.light: _lightAccentDim,
-  };
-  static const Map<Brightness, Color> dangerDimByBrightness = {
-    Brightness.dark: dangerDim,
-    Brightness.light: _lightDangerDim,
-  };
-  static const Map<Brightness, Color> warningDimByBrightness = {
-    Brightness.dark: warningDim,
-    Brightness.light: _lightWarningDim,
-  };
-  static const Map<Brightness, Color> infoDimByBrightness = {
-    Brightness.dark: infoDim,
-    Brightness.light: _lightInfoDim,
-  };
-  static const Map<Brightness, Color> mutedByBrightness = {
-    Brightness.dark: _darkTextMuted,
-    Brightness.light: _lightTextMuted,
-  };
+  static ColorScheme lightScheme() => const ColorScheme(
+        brightness: Brightness.light,
+        primary: _lAccent, onPrimary: Colors.white,
+        secondary: _lAi, onSecondary: Colors.white,
+        error: _lDanger, onError: Colors.white,
+        surface: _lSurface, onSurface: _lText,
+        surfaceContainerLowest: _lBg,
+        surfaceContainerLow: _lSurface,
+        surfaceContainerHighest: _lRaised,
+        surfaceContainer: _lRaised,
+        onSurfaceVariant: _lText2,
+        outline: _lBorderFoc,
+        outlineVariant: _lBorder,
+        tertiary: _lWarning, onTertiary: Colors.white,
+      );
+
+  // Dim backgrounds for chips/badges per brightness.
+  static const Map<Brightness, Color> accentDimOf = {Brightness.dark: accentDim, Brightness.light: _lAccentDim};
+  static const Map<Brightness, Color> dangerDimOf = {Brightness.dark: dangerDim, Brightness.light: _lDangerDim};
+  static const Map<Brightness, Color> warningDimOf = {Brightness.dark: warningDim, Brightness.light: _lWarningDim};
+  static const Map<Brightness, Color> aiDimOf = {Brightness.dark: aiDim, Brightness.light: _lAiDim};
+  static const Map<Brightness, Color> mutedOf = {Brightness.dark: _dText3, Brightness.light: _lText3};
 }

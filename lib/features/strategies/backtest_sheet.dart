@@ -122,7 +122,7 @@ class _BacktestResultView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Headline P&L
-        ArbitronCard(
+        ArbitronPanel(
           child: Column(
             children: [
               Row(
@@ -154,7 +154,7 @@ class _BacktestResultView extends StatelessWidget {
         _EquityCurveChart(result: result),
         const SizedBox(height: AppSpacing.lg),
         // Detailed stats
-        ArbitronCard(
+        ArbitronPanel(
           child: Column(
             children: [
               _DetailRow(label: 'Period', value: '${Fmt.date(result.startDate)} \u2013 ${Fmt.date(result.endDate)}'),

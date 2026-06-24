@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_spacing.dart';
-import '../utils/fmt.dart';
+import 'shared_widgets.dart';
 
-/// LLM-generated text container with a 3px `info` left border and `infoDim`
-/// background at 0.5 opacity. Header row shows the "AI" badge + disclaimer.
-/// See DESIGN.md §5.11 — mandatory visual treatment for all LLM output.
+/// AI analysis block — full-width, violet-tinted background, no left-border-
+/// stripe (banned by impeccable). Header in mono caps. See DESIGN.md.
 class AiAnalysisBlock extends StatelessWidget {
   final String text;
   final String? title;
@@ -25,57 +24,30 @@ class AiAnalysisBlock extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.infoDim.withOpacity(0.5),
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(14)),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 3, color: theme.info),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: theme.infoDim,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text('AI',
-                              style: theme.textTheme.labelSmall!.copyWith(
-                                  color: theme.info, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                        ),
-                        if (title != null) ...[
-                          const SizedBox(width: 8),
-                          Text(title!, style: theme.textTheme.labelMedium!.copyWith(color: theme.textSecondary, fontWeight: FontWeight.w600)),
-                        ],
-                        const Spacer(),
-                        if (timestamp != null)
-                          Text(Fmt.relative(timestamp!),
-                              style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(text, style: theme.textTheme.bodyLarge!.copyWith(color: theme.textPrimary, height: 1.5)),
-                    if (showDisclaimer) ...[
-                      const SizedBox(height: 8),
-                      Text('AI analysis \u2014 not financial advice',
-                          style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted, fontStyle: FontStyle.italic)),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(color: theme.aiDim, borderRadius: BorderRadius.circular(AppRadius.sm)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.smart_toy, size: 14, color: theme.aiColor),
+          const SizedBox(width: 6),
+          MonoText('AI ANALYSIS', size: 10, weight: FontWeight.w700, color: theme.aiColor),
+          if (title != null) ...[const SizedBox(width: 8), Text(title!, style: theme.textTheme.labelSmall?.copyWith(color: theme.textSecondary))],
+          const Spacer(),
+          if (timestamp != null) MonoText(_relative(timestamp!), size: 11, color: theme.textMuted),
+        ]),
+        const SizedBox(height: AppSpacing.sm),
+        Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textPrimary, height: 1.5)),
+        if (showDisclaimer) ...[const SizedBox(height: AppSpacing.sm), MonoText('NOT FINANCIAL ADVICE', size: 9, color: theme.textMuted)],
+      ]),
     );
+  }
+
+  String _relative(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inSeconds < 5) return 'now';
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    if (d.inHours < 24) return '${d.inHours}h';
+    return '${d.inDays}d';
   }
 }

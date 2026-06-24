@@ -4,132 +4,73 @@ import '../theme/app_spacing.dart';
 import '../domain/opportunity.dart';
 import '../domain/exchange.dart';
 import '../utils/fmt.dart';
-import 'score_chip.dart';
+import 'status_chip.dart';
+import 'ai_analysis_block.dart';
+import 'shared_widgets.dart';
 
-/// The signature component — a detected arbitrage opportunity rendered as a
-/// card. Compact form for lists; expand with [expanded] for detail.
-/// See DESIGN.md §5.2.
 class OpportunityCard extends StatelessWidget {
   final Opportunity opportunity;
   final bool expanded;
   final VoidCallback? onTap;
-
   const OpportunityCard({super.key, required this.opportunity, this.expanded = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final o = opportunity;
+    final profitable = o.netProfitUsd >= 0;
     final buyEx = ExchangeCatalog.byId(o.buyExchangeId);
     final sellEx = ExchangeCatalog.byId(o.sellExchangeId);
-    final profitable = o.netProfitUsd >= 0;
-
+    final profitColor = profitable ? theme.success : theme.danger;
     return Material(
-      color: theme.cardTheme.color,
-      borderRadius: BorderRadius.circular(14),
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Container(
-          decoration: BoxDecoration(
-            color: theme.cardTheme.color,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.borderSubtle, width: 1),
-          ),
+          decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: theme.borderSubtle, width: 1)),
           padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: pair + net profit
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(o.pair, style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Text(buyEx.name, style: theme.textTheme.labelMedium!.copyWith(color: theme.textSecondary)),
-                            Icon(Icons.arrow_forward, size: 14, color: theme.textMuted),
-                            Text(sellEx.name, style: theme.textTheme.labelMedium!.copyWith(color: theme.textSecondary)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(Fmt.signedUsd(o.netProfitUsd),
-                          style: theme.textTheme.titleLarge!.copyWith(
-                              color: profitable ? theme.success : theme.danger, fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(Fmt.pct(o.netProfitPct),
-                          style: theme.textTheme.labelMedium!.copyWith(
-                              color: profitable ? theme.success : theme.danger, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ],
-              ),
-              if (expanded) ...[
-                const SizedBox(height: AppSpacing.lg),
-                _DetailRow(label: 'Buy price', value: '\$${Fmt.price(o.buyPrice)}'),
-                _DetailRow(label: 'Sell price', value: '\$${Fmt.price(o.sellPrice)}'),
-                _DetailRow(label: 'Gross spread', value: Fmt.pctRaw(o.grossSpreadPct)),
-                _DetailRow(label: 'Est. fees', value: Fmt.usd(o.estFeesUsd)),
-                _DetailRow(label: 'Est. slippage', value: Fmt.usd(o.estSlippageUsd)),
-                const SizedBox(height: AppSpacing.md),
-                if (o.analysisText.isNotEmpty) ...[
-                  Text(o.analysisText,
-                      style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary, height: 1.5)),
-                  const SizedBox(height: AppSpacing.md),
-                ],
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                MonoText(o.pair, size: 15, weight: FontWeight.w600, color: theme.textPrimary),
+                const SizedBox(height: 4),
+                Row(children: [
+                  MonoText(buyEx.name.split(' ').first, size: 11, color: theme.textSecondary),
+                  Icon(Icons.arrow_forward, size: 12, color: theme.textMuted),
+                  MonoText(sellEx.name.split(' ').first, size: 11, color: theme.textSecondary),
+                ]),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                MonoText(Fmt.signedUsd(o.netProfitUsd), size: 15, weight: FontWeight.w600, color: profitColor),
+                const SizedBox(height: 2),
+                MonoText(Fmt.pct(o.netProfitPct), size: 11, weight: FontWeight.w600, color: profitColor),
+              ]),
+            ]),
+            if (expanded) ...[
+              const SizedBox(height: AppSpacing.lg),
+              DataKV(label: 'Buy price', value: '\$${Fmt.price(o.buyPrice)}'),
+              DataKV(label: 'Sell price', value: '\$${Fmt.price(o.sellPrice)}'),
+              DataKV(label: 'Gross spread', value: Fmt.pctRaw(o.grossSpreadPct)),
+              DataKV(label: 'Est. fees', value: Fmt.usd(o.estFeesUsd)),
+              DataKV(label: 'Est. slippage', value: Fmt.usd(o.estSlippageUsd)),
+              if (o.requiresBridge) ...[
+                DataKV(label: 'Bridge', value: o.bridgeName ?? ''),
+                DataKV(label: 'Bridge cost', value: Fmt.usd(o.bridgeCostUsd ?? 0)),
               ],
-              // Footer chips
-              Row(
-                children: [
-                  ScoreChip(score: o.confidenceScore),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: theme.surfaceRaised, borderRadius: BorderRadius.circular(6)),
-                    child: Text(o.strategy.label,
-                        style: theme.textTheme.labelMedium!.copyWith(color: theme.textSecondary, fontWeight: FontWeight.w600)),
-                  ),
-                  const Spacer(),
-                  Text(Fmt.relative(o.detectedAt),
-                      style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
-                ],
-              ),
+              if (o.analysisText.isNotEmpty) ...[const SizedBox(height: AppSpacing.md), AiAnalysisBlock(text: o.analysisText, title: 'Opportunity', timestamp: o.detectedAt)],
             ],
-          ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(children: [
+              ScoreBar(score: o.confidenceScore, width: 42),
+              const SizedBox(width: 8),
+              StatusChip(label: o.strategy.name.split(' ').first.toUpperCase(), tone: ChipTone.neutral),
+              const Spacer(),
+              MonoText(Fmt.relative(o.detectedAt), size: 11, color: theme.textMuted),
+            ]),
+          ]),
         ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _DetailRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary)),
-          Text(value,
-              style: theme.textTheme.bodyMedium!.copyWith(
-                  color: theme.textPrimary, fontFeatures: const [FontFeature.tabularFigures()], fontWeight: FontWeight.w500)),
-        ],
       ),
     );
   }

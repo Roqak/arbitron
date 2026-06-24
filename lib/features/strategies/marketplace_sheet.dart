@@ -58,7 +58,7 @@ class _MarketplaceCard extends StatelessWidget {
     final theme = Theme.of(context);
     final s = strategy;
     final positive = s.backtestPnl >= 0;
-    return ArbitronCard(
+    return ArbitronPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -101,7 +101,7 @@ class _MarketplaceCard extends StatelessWidget {
           // Install button
           Row(
             children: [
-              StatusChip(label: s.type.label, tone: ChipTone.info),
+              StatusChip(label: s.type.label, tone: ChipTone.ai),
               const Spacer(),
               FilledButton.tonal(
                 onPressed: () => _install(context, s),

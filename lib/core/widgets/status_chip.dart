@@ -1,23 +1,14 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'shared_widgets.dart';
 
-/// Status chip — `labelMedium` text, `accentDim`/`warningDim`/etc background
-/// with matching text color. See DESIGN.md §5.3.
-enum ChipTone { accent, warning, danger, info, neutral }
+enum ChipTone { accent, warning, danger, ai, neutral }
 
 class StatusChip extends StatelessWidget {
   final String label;
   final ChipTone tone;
   final IconData? icon;
-  final double? size;
-
-  const StatusChip({
-    super.key,
-    required this.label,
-    this.tone = ChipTone.neutral,
-    this.icon,
-    this.size,
-  });
+  const StatusChip({super.key, required this.label, this.tone = ChipTone.neutral, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -26,20 +17,54 @@ class StatusChip extends StatelessWidget {
       ChipTone.accent => (theme.accentDim, theme.accent),
       ChipTone.warning => (theme.warningDim, theme.warning),
       ChipTone.danger => (theme.dangerDim, theme.danger),
-      ChipTone.info => (theme.infoDim, theme.info),
+      ChipTone.ai => (theme.aiDim, theme.aiColor),
       ChipTone.neutral => (theme.surfaceRaised, theme.textSecondary),
     };
-    final style = theme.textTheme.labelMedium!.copyWith(color: fg, fontWeight: FontWeight.w600);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 4)],
-          Text(label, style: style),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[Icon(icon, size: 11, color: fg), const SizedBox(width: 4)],
+        MonoText(label, size: 11, weight: FontWeight.w600, color: fg),
+      ]),
     );
+  }
+}
+
+class ScoreBar extends StatelessWidget {
+  final int score;
+  final double width;
+  const ScoreBar({super.key, required this.score, this.width = 48});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final segColor = score <= 40 ? theme.textMuted : score <= 70 ? theme.warning : theme.accent;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (int i = 0; i < 3; i++)
+        Container(width: width / 3 - 2, height: 3, margin: const EdgeInsets.only(right: 2),
+          decoration: BoxDecoration(color: i <= (score / 33).floor() ? segColor : theme.borderSubtle, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 6),
+      MonoText('$score', size: 12, weight: FontWeight.w600, color: segColor),
+    ]);
+  }
+}
+
+/// ModeChip — accepts a generic object with a `label` getter (ExecutionMode).
+class ModeChip extends StatelessWidget {
+  final dynamic mode;
+  final bool compact;
+  const ModeChip({super.key, required this.mode, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStr = mode.label.toString();
+    final (tone, icon, label) = switch (labelStr) {
+      'Manual' => (ChipTone.ai, Icons.pan_tool_outlined, 'MANUAL'),
+      'Semi-Auto' => (ChipTone.warning, Icons.timer_outlined, 'SEMI'),
+      'Autonomous' => (ChipTone.accent, Icons.auto_mode, 'AUTO'),
+      _ => (ChipTone.neutral, Icons.help_outline, labelStr),
+    };
+    return StatusChip(label: compact ? label : labelStr, tone: tone, icon: icon);
   }
 }
