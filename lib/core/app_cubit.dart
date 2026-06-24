@@ -73,16 +73,13 @@ class AppCubit extends HydratedCubit<AppState> {
   }
 
   void _restartFeeds() {
-    final supported = state.enabledExchangeIds.where((id) {
-      final ex = ExchangeCatalog.byId(id);
-      return ex.kind == ExchangeKind.cex && _supportedFeedIds.contains(id);
-    }).toList();
+    final supported = state.enabledExchangeIds.where((id) => _supportedFeedIds.contains(id)).toList();
     if (supported.isEmpty) return;
     _priceFeedService.start(enabledExchangeIds: supported, pairs: _monitoredPairs);
     _feedsStarted = true;
   }
 
-  static const _supportedFeedIds = {'binance', 'coinbase', 'kraken', 'okx', 'bybit'};
+  static const _supportedFeedIds = {'binance', 'coinbase', 'kraken', 'okx', 'bybit', 'kucoin', 'gate', 'bitfinex', 'huobi', 'mexc', 'jupiter'};
 
   void _onFeedStatus(Map<String, FeedStatus> statuses) {
     final anyConnected = statuses.values.any((s) => s == FeedStatus.connected);

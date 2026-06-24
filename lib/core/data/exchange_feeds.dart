@@ -239,3 +239,186 @@ class BybitFeed extends PriceFeed {
     }
   }
 }
+
+/// KuCoin WebSocket ticker channel.
+class KuCoinFeed extends PriceFeed {
+  KuCoinFeed({required super.pairs}) : super(exchangeId: 'kucoin');
+
+  @override
+  String get url => 'wss://push.kucoin.com/endpoint';
+
+  @override
+  void subscribe(dynamic channel) {
+    final symbols = pairs.map((p) => p.replaceAll('/', '-')).toList();
+    final payload = jsonEncode({
+      'id': 1,
+      'type': 'subscribe',
+      'topic': '/market/ticker:${symbols.join(",")}',
+      'response': true,
+    });
+    if (channel is WebSocketChannel) channel.sink.add(payload);
+  }
+
+  @override
+  List<Ticker> parseFrame(dynamic message) {
+    try {
+      final json = jsonDecode(message as String) as Map<String, dynamic>;
+      final type = json['type'] as String?;
+      if (type != 'message') return [];
+      final data = json['data'] as Map<String, dynamic>?;
+      if (data == null) return [];
+      final rawSymbol = (data['symbol'] as String?) ?? '';
+      final pair = PriceFeed.normalizePair(rawSymbol);
+      final bid = double.tryParse(data['bestBid'] as String? ?? '') ?? 0;
+      final ask = double.tryParse(data['bestAsk'] as String? ?? '') ?? 0;
+      final last = double.tryParse(data['price'] as String? ?? '') ?? 0;
+      if (bid <= 0 || ask <= 0) return [];
+      return [Ticker(exchangeId: exchangeId, pair: pair, bid: bid, ask: ask, last: last, updatedAt: DateTime.now())];
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// Gate.io WebSocket ticker channel.
+class GateFeed extends PriceFeed {
+  GateFeed({required super.pairs}) : super(exchangeId: 'gate');
+
+  @override
+  String get url => 'wss://api.gate.com/ws/v4/';
+
+  @override
+  void subscribe(dynamic channel) {
+    for (final p in pairs) {
+      final currencyPair = p.replaceAll('/', '_').toLowerCase();
+      final payload = jsonEncode({'time': DateTime.now().millisecondsSinceEpoch, 'channel': 'spot.tickers', 'event': 'subscribe', 'payload': [currencyPair]});
+      if (channel is WebSocketChannel) channel.sink.add(payload);
+    }
+  }
+
+  @override
+  List<Ticker> parseFrame(dynamic message) {
+    try {
+      final json = jsonDecode(message as String) as Map<String, dynamic>;
+      if (json['channel'] != 'spot.tickers') return [];
+      final result = json['result'] as Map<String, dynamic>?;
+      if (result == null) return [];
+      final rawPair = (result['currency_pair'] as String?) ?? '';
+      final pair = PriceFeed.normalizePair(rawPair);
+      final last = double.tryParse(result['last'] as String? ?? '') ?? 0;
+      final bid = double.tryParse(result['highest_bid'] as String? ?? '') ?? 0;
+      final ask = double.tryParse(result['lowest_ask'] as String? ?? '') ?? 0;
+      if (bid <= 0 || ask <= 0) return [];
+      return [Ticker(exchangeId: exchangeId, pair: pair, bid: bid, ask: ask, last: last, updatedAt: DateTime.now())];
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// Bitfinex WebSocket ticker channel.
+class BitfinexFeed extends PriceFeed {
+  BitfinexFeed({required super.pairs}) : super(exchangeId: 'bitfinex');
+
+  @override
+  String get url => 'wss://api-pub.bitfinex.com/ws/2';
+
+  @override
+  void subscribe(dynamic channel) {
+    for (final p in pairs) {
+      final symbol = 't${p.replaceAll('/', '')}';
+      final payload = jsonEncode({'event': 'subscribe', 'channel': 'ticker', 'symbol': symbol});
+      if (channel is WebSocketChannel) channel.sink.add(payload);
+    }
+  }
+
+  @override
+  List<Ticker> parseFrame(dynamic message) {
+    try {
+      final decoded = jsonDecode(message as String);
+      if (decoded is Map) return [];
+      if (decoded is! List || decoded.length < 2) return [];
+      final data = decoded[1];
+      if (data is! List || data.length < 4) return [];
+      final bid = (data[0] as num).toDouble();
+      final ask = (data[2] as num).toDouble();
+      final last = data.length > 8 ? (data[8] as num).toDouble() : (bid + ask) / 2;
+      if (bid <= 0 || ask <= 0) return [];
+      final pair = pairs.first;
+      return [Ticker(exchangeId: exchangeId, pair: pair, bid: bid, ask: ask, last: last, updatedAt: DateTime.now())];
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// Huobi / HTX WebSocket ticker channel.
+class HuobiFeed extends PriceFeed {
+  HuobiFeed({required super.pairs}) : super(exchangeId: 'huobi');
+
+  @override
+  String get url => 'wss://api-aws.huobi.pro/ws';
+
+  @override
+  void subscribe(dynamic channel) {
+    for (final p in pairs) {
+      final symbol = p.replaceAll('/', '').toLowerCase();
+      final payload = jsonEncode({'sub': 'market.$symbol.detail'});
+      if (channel is WebSocketChannel) channel.sink.add(payload);
+    }
+  }
+
+  @override
+  List<Ticker> parseFrame(dynamic message) {
+    try {
+      final json = jsonDecode(message as String) as Map<String, dynamic>;
+      final tick = json['tick'] as Map<String, dynamic>?;
+      if (tick == null) return [];
+      final ch = json['ch'] as String? ?? '';
+      final rawSymbol = ch.split('.')[1];
+      final pair = PriceFeed.normalizePair(rawSymbol);
+      final bid = (tick['bid'] as num?)?.toDouble() ?? 0;
+      final ask = (tick['ask'] as num?)?.toDouble() ?? 0;
+      final close = (tick['close'] as num?)?.toDouble() ?? 0;
+      if (bid <= 0 || ask <= 0) return [];
+      return [Ticker(exchangeId: exchangeId, pair: pair, bid: bid, ask: ask, last: close, updatedAt: DateTime.now())];
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// MEXC WebSocket ticker channel.
+class MexcFeed extends PriceFeed {
+  MexcFeed({required super.pairs}) : super(exchangeId: 'mexc');
+
+  @override
+  String get url => 'wss://contract.mexc.com/edge';
+
+  @override
+  void subscribe(dynamic channel) {
+    for (final p in pairs) {
+      final symbol = p.replaceAll('/', '').toLowerCase();
+      final payload = jsonEncode({'method': 'sub.ticker', 'param': {'symbol': symbol}});
+      if (channel is WebSocketChannel) channel.sink.add(payload);
+    }
+  }
+
+  @override
+  List<Ticker> parseFrame(dynamic message) {
+    try {
+      final json = jsonDecode(message as String) as Map<String, dynamic>;
+      final data = json['data'] as Map<String, dynamic>?;
+      if (data == null) return [];
+      final rawSymbol = (data['symbol'] as String?) ?? '';
+      final pair = PriceFeed.normalizePair(rawSymbol);
+      final bid = double.tryParse(data['bid1'] as String? ?? '') ?? 0;
+      final ask = double.tryParse(data['ask1'] as String? ?? '') ?? 0;
+      final last = double.tryParse(data['lastPrice'] as String? ?? '') ?? 0;
+      if (bid <= 0 || ask <= 0) return [];
+      return [Ticker(exchangeId: exchangeId, pair: pair, bid: bid, ask: ask, last: last, updatedAt: DateTime.now())];
+    } catch (_) {
+      return [];
+    }
+  }
+}

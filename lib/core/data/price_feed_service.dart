@@ -5,6 +5,7 @@ import '../domain/ticker.dart';
 import '../domain/exchange.dart';
 import 'price_feed.dart';
 import 'exchange_feeds.dart';
+import 'dex_feeds.dart';
 
 /// Aggregates live ticker feeds across all enabled CEXs. Maintains the latest
 /// quote per (exchange, pair) and emits snapshots when prices update.
@@ -134,20 +135,26 @@ class PriceFeedService {
 
   PriceFeed? _buildFeed(String exchangeId, Set<String> pairs) {
     final ex = ExchangeCatalog.byId(exchangeId);
-    if (ex.kind != ExchangeKind.cex) return null; // DEX feeds come in v1.5+
-    switch (exchangeId) {
-      case 'binance':
-        return BinanceFeed(pairs: pairs);
-      case 'coinbase':
-        return CoinbaseFeed(pairs: pairs);
-      case 'kraken':
-        return KrakenFeed(pairs: pairs);
-      case 'okx':
-        return OkxFeed(pairs: pairs);
-      case 'bybit':
-        return BybitFeed(pairs: pairs);
-      default:
-        return null; // other CEXs not yet implemented
+    if (ex.kind == ExchangeKind.cex) {
+      switch (exchangeId) {
+        case 'binance': return BinanceFeed(pairs: pairs);
+        case 'coinbase': return CoinbaseFeed(pairs: pairs);
+        case 'kraken': return KrakenFeed(pairs: pairs);
+        case 'okx': return OkxFeed(pairs: pairs);
+        case 'bybit': return BybitFeed(pairs: pairs);
+        case 'kucoin': return KuCoinFeed(pairs: pairs);
+        case 'gate': return GateFeed(pairs: pairs);
+        case 'bitfinex': return BitfinexFeed(pairs: pairs);
+        case 'huobi': return HuobiFeed(pairs: pairs);
+        case 'mexc': return MexcFeed(pairs: pairs);
+        default: return null;
+      }
+    } else {
+      // DEX feeds (REST polling)
+      switch (exchangeId) {
+        case 'jupiter': return JupiterFeed(pairs: pairs);
+        default: return null; // other DEXs not yet implemented
+      }
     }
   }
 
