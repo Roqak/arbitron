@@ -8,6 +8,7 @@ import 'domain/llm_result.dart';
 import 'domain/opportunity.dart';
 import 'domain/strategy.dart';
 import 'domain/trade.dart';
+import 'domain/custom_strategy.dart';
 import 'data/demo_data_service.dart';
 import 'data/price_feed_service.dart';
 import 'data/price_feed.dart';
@@ -177,6 +178,10 @@ class AppCubit extends HydratedCubit<AppState> {
 
     executeOpportunity(o, mode: ExecutionMode.autonomous);
   }
+
+  // ── Custom strategies (no-code builder) ────────────────────────────────────
+  void addCustomStrategy(CustomStrategy s) => emit(state.copyWith(customStrategies: [...state.customStrategies, s]));
+  void removeCustomStrategy(String id) => emit(state.copyWith(customStrategies: state.customStrategies.where((e) => e.id != id).toList()));
 
   // ── Strategies ─────────────────────────────────────────────────────────────
   void addStrategy(Strategy s) => emit(state.copyWith(strategies: [...state.strategies, s]));

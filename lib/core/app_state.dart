@@ -2,6 +2,7 @@ part of 'app_cubit.dart';
 
 class AppState extends Equatable {
   final List<Strategy> strategies;
+  final List<CustomStrategy> customStrategies;
   final List<String> enabledExchangeIds;
   final List<Opportunity> opportunities;
   final List<TradeRecord> trades;
@@ -19,6 +20,7 @@ class AppState extends Equatable {
 
   const AppState({
     required this.strategies,
+    this.customStrategies = const [],
     required this.enabledExchangeIds,
     required this.opportunities,
     required this.trades,
@@ -54,6 +56,7 @@ class AppState extends Equatable {
 
   AppState copyWith({
     List<Strategy>? strategies,
+    List<CustomStrategy>? customStrategies,
     List<String>? enabledExchangeIds,
     List<Opportunity>? opportunities,
     List<TradeRecord>? trades,
@@ -71,6 +74,7 @@ class AppState extends Equatable {
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
+      customStrategies: customStrategies ?? this.customStrategies,
       enabledExchangeIds: enabledExchangeIds ?? this.enabledExchangeIds,
       opportunities: opportunities ?? this.opportunities,
       trades: trades ?? this.trades,
@@ -105,7 +109,7 @@ class AppState extends Equatable {
 
   @override
   List<Object?> get props => [
-        strategies, enabledExchangeIds, opportunities, trades, llmConfig,
+        strategies, customStrategies, enabledExchangeIds, opportunities, trades, llmConfig,
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
         feedStatuses, feedsConnected, llmConfigured, lastLlmAnalysisAt,
         lastDailySummary, lastDailySummaryAt,
@@ -115,6 +119,7 @@ class AppState extends Equatable {
   factory AppState.fromJson(Map<String, dynamic> json) {
     return AppState(
       strategies: (json['strategies'] as List? ?? []).map((e) => Strategy.fromJson(e as Map<String, dynamic>)).toList(),
+      customStrategies: (json['customStrategies'] as List? ?? []).map((e) => CustomStrategy.fromJson(e as Map<String, dynamic>)).toList(),
       enabledExchangeIds: List<String>.from(json['enabledExchangeIds'] as List? ?? const ['binance', 'coinbase', 'kraken']),
       opportunities: [], // don't persist ephemeral opportunities
       trades: (json['trades'] as List? ?? []).map((e) => TradeRecord.fromJson(e as Map<String, dynamic>)).toList(),
@@ -128,6 +133,7 @@ class AppState extends Equatable {
 
   Map<String, dynamic> toJson() => {
         'strategies': strategies.map((e) => e.toJson()).toList(),
+        'customStrategies': customStrategies.map((e) => e.toJson()).toList(),
         'enabledExchangeIds': enabledExchangeIds,
         'trades': trades.map((e) => e.toJson()).toList(),
         'llmConfig': llmConfig.toJson(),
