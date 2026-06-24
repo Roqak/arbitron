@@ -5,6 +5,7 @@ import '../../core/domain/exchange.dart';
 import '../../core/domain/llm_config.dart';
 import '../../core/domain/trade.dart';
 import '../../core/data/trade_exporter.dart';
+import '../../core/data/tax_exporter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
@@ -62,6 +63,10 @@ class SettingsScreen extends StatelessWidget {
                 const SizedBox(height: AppSpacing.section),
                 _Section(title: 'Power User API', children: [
                   _ApiServerTile(running: state.apiRunning, port: state.apiPort, token: state.apiToken),
+                ]),
+                const SizedBox(height: AppSpacing.section),
+                _Section(title: 'Tax Export', children: [
+                  _TaxExportTile(trades: state.trades),
                 ]),
                 const SizedBox(height: AppSpacing.section),
                 _AboutTile(),
@@ -637,6 +642,99 @@ class _ListTile extends StatelessWidget {
             if (trailing != null) trailing!,
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TaxExportTile extends StatelessWidget {
+  final List<TradeRecord> trades;
+  const _TaxExportTile({required this.trades});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final summary = TaxExporter.summary(trades);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Summary card
+          Row(
+            children: [
+              Icon(Icons.receipt_long_outlined, color: theme.textSecondary, size: 22),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tax Year ${summary.taxYear}', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text('${summary.totalTrades} trades \u00b7 ${Fmt.signedUsd(summary.netRealized)} net realized',
+                        style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Gain/loss breakdown
+          _TaxRow(label: 'Total gains', value: Fmt.usd(summary.totalGains), color: theme.success),
+          _TaxRow(label: 'Total losses', value: Fmt.usd(summary.totalLosses), color: theme.danger),
+          _TaxRow(label: 'Net realized', value: Fmt.signedUsd(summary.netRealized), color: summary.isNetGain ? theme.success : theme.danger, bold: true),
+          _TaxRow(label: 'Short-term', value: Fmt.signedUsd(summary.shortTermGains)),
+          _TaxRow(label: 'Long-term', value: Fmt.signedUsd(summary.longTermGains)),
+          _TaxRow(label: 'Total fees', value: Fmt.usd(summary.totalFees)),
+          const SizedBox(height: AppSpacing.md),
+          Divider(height: 1, color: theme.borderSubtle),
+          const SizedBox(height: AppSpacing.md),
+          // Export buttons
+          for (final fmt in TaxFormat.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: _ListTile(
+                title: fmt.label,
+                subtitle: fmt.description,
+                trailing: const Icon(Icons.download_outlined, size: 20),
+                onTap: () {
+                  final content = fmt == TaxFormat.form8949
+                      ? TaxExporter.form8949Csv(trades)
+                      : TaxExporter.taxableEventsCsv(trades);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${fmt.label} exported (${content.length} bytes)'), duration: const Duration(seconds: 3)),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaxRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
+  final bool bold;
+  const _TaxRow({required this.label, required this.value, this.color, this.bold = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary)),
+          Text(value, style: theme.textTheme.bodyMedium!.copyWith(
+            color: color ?? theme.textPrimary,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          )),
+        ],
       ),
     );
   }
