@@ -9,6 +9,7 @@ import '../../core/utils/fmt.dart';
 import '../../core/widgets/widgets.dart';
 import 'backtest_sheet.dart';
 import 'custom_strategy_builder_sheet.dart';
+import 'marketplace_sheet.dart';
 
 /// Strategies screen — list + editor. See PRD §8.3.
 class StrategiesScreen extends StatelessWidget {
@@ -79,15 +80,30 @@ class _Header extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text('Strategies', style: theme.textTheme.displayMedium!.copyWith(fontWeight: FontWeight.w700)),
-        TextButton.icon(
-          onPressed: () => showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            builder: (_) => const CustomStrategyBuilderSheet(),
-          ),
-          icon: const Icon(Icons.widgets_outlined, size: 18),
-          label: const Text('Builder'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                builder: (_) => const MarketplaceSheet(),
+              ),
+              icon: const Icon(Icons.storefront_outlined, size: 18),
+              label: const Text('Market'),
+            ),
+            TextButton.icon(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                builder: (_) => const CustomStrategyBuilderSheet(),
+              ),
+              icon: const Icon(Icons.widgets_outlined, size: 18),
+              label: const Text('Builder'),
+            ),
+          ],
         ),
       ],
     );
