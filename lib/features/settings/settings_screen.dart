@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/app_cubit.dart';
 import '../../core/domain/exchange.dart';
 import '../../core/domain/llm_config.dart';
+import '../../core/domain/trade.dart';
+import '../../core/data/trade_exporter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
@@ -29,7 +31,7 @@ class SettingsScreen extends StatelessWidget {
                 ]),
                 const SizedBox(height: AppSpacing.section),
                 _Section(title: 'LLM Co-Pilot', children: [
-                  _LlmConfigTile(config: state.llmConfig),
+                  _LlmConfigTile(config: state.llmConfig, configured: state.llmConfigured),
                 ]),
                 const SizedBox(height: AppSpacing.section),
                 _Section(title: 'Exchanges', children: [
@@ -54,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
                 _Section(title: 'Data', children: [
                   _ToggleTile(title: 'Crash reporting', subtitle: 'Send anonymous crash reports to Sentry', defaultValue: true),
                   _ToggleTile(title: 'Usage analytics', subtitle: 'Anonymous aggregate usage stats via PostHog', defaultValue: true),
-                  _ListTile(title: 'Export trade history', subtitle: 'CSV / JSON', trailing: const Icon(Icons.chevron_right, size: 20), onTap: () {}),
+                  _ListTile(title: 'Export trade history', subtitle: 'CSV / JSON', trailing: const Icon(Icons.chevron_right, size: 20), onTap: () => _showExportSheet(context, state.trades)),
                   _ListTile(title: 'Retention period', subtitle: '180 days', trailing: const Icon(Icons.chevron_right, size: 20), onTap: () {}),
                 ]),
                 const SizedBox(height: AppSpacing.section),
@@ -64,6 +66,50 @@ class SettingsScreen extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+
+  void _showExportSheet(BuildContext context, List<TradeRecord> trades) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.xxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 32, height: 4, decoration: BoxDecoration(color: theme.borderStrong, borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: AppSpacing.xl),
+                Text('Export Trade History', style: theme.textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: AppSpacing.xs),
+                Text('${trades.length} trades available', style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
+                const SizedBox(height: AppSpacing.xl),
+                for (final fmt in ExportFormat.values)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: _ListTile(
+                      title: fmt.label,
+                      subtitle: TradeExporter.filename(fmt),
+                      trailing: const Icon(Icons.download_outlined, size: 20),
+                      onTap: () {
+                        final content = fmt == ExportFormat.csv ? TradeExporter.toCsv(trades) : TradeExporter.toJson(trades);
+                        Navigator.pop(sheetCtx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${fmt.label} export ready (${content.length} bytes)'), duration: const Duration(seconds: 3)),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -128,14 +174,15 @@ class _ThemeToggle extends StatelessWidget {
 
 class _LlmConfigTile extends StatelessWidget {
   final LlmConfig config;
-  const _LlmConfigTile({required this.config});
+  final bool configured;
+  const _LlmConfigTile({required this.config, required this.configured});
 
   @override
   Widget build(BuildContext context) {
     return _ListTile(
       title: 'LLM configuration',
-      subtitle: config.configured ? '${config.model} \u00b7 ${Uri.tryParse(config.endpoint)?.host ?? config.endpoint}' : 'Not configured',
-      trailing: StatusChip(label: config.configured ? 'Connected' : 'Off', tone: config.configured ? ChipTone.accent : ChipTone.neutral),
+      subtitle: configured ? '${config.model} \u00b7 ${Uri.tryParse(config.endpoint)?.host ?? config.endpoint}' : 'Not configured \u2014 add an API key to enable AI analysis',
+      trailing: StatusChip(label: configured ? 'Connected' : 'Off', tone: configured ? ChipTone.accent : ChipTone.neutral),
       onTap: () => _showLlmSheet(context, config),
     );
   }
@@ -220,13 +267,15 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
                   OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
                   const SizedBox(width: AppSpacing.md),
                   FilledButton(
-                    onPressed: () {
+                    onPressed: () async {
                       final cfg = widget.existing.copyWith(
                         endpoint: _endpointCtrl.text.trim().isEmpty ? widget.existing.endpoint : _endpointCtrl.text.trim(),
                         model: _modelCtrl.text.trim().isEmpty ? widget.existing.model : _modelCtrl.text.trim(),
                         configured: true,
                       );
-                      context.read<AppCubit>().updateLlmConfig(cfg);
+                      final key = _keyCtrl.text.trim();
+                      await context.read<AppCubit>().saveLlmConfig(cfg, key.isEmpty ? null : key);
+                      if (!context.mounted) return;
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('LLM configuration saved'), duration: Duration(seconds: 2)));
                     },

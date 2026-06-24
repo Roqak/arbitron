@@ -12,14 +12,15 @@ analyze, score, and (optionally) execute trades within user-defined risk limits.
 
 ## Status
 
-| Area | v1.5.0 |
+| Area | v2.0.0 |
 |------|--------|
 | CEX support | **Live WebSocket feeds**: Binance, Coinbase, Kraken, OKX, Bybit |
-| DEX support | Catalog of 10 DEXs (config UI only; live feeds in v2.0) |
+| DEX support | Catalog of 10 DEXs (config UI only; live feeds in v2.5) |
 | Strategies | 3 seeded strategies, full editor, 5 strategy types |
-| Execution modes | Manual, Semi-Auto, Autonomous (with Kill Switch) |
+| Execution modes | Manual, Semi-Auto, **Autonomous with live LLM execution decisions** |
 | Opportunity scanner | **Live cross-exchange spread detection** net of fees + slippage |
-| LLM integration | Config screen (OpenAI-compatible); live analysis calls in v2.0 |
+| LLM integration | **Live OpenAI-compatible API**: analysis, execution decisions, debriefs, daily summary |
+| Trade export | CSV / JSON export of full audit log |
 | Persistence | HydratedBloc (strategies, trades, LLM config, theme) |
 
 ## Project structure
@@ -71,8 +72,8 @@ flutter analyze
 
 ## Roadmap
 
-See `PRD.md §12` for the full phased roadmap. v2.0 adds live LLM analysis
-calls, all remaining CEX/DEX feeds, and flash loan support.
+See `PRD.md §12` for the full phased roadmap. v2.5 adds strategy backtesting,
+LLM fine-tuning on user trade history, and cross-chain bridge integrations.
 
 ---
 

@@ -12,6 +12,10 @@ class AppState extends Equatable {
   final DateTime lastUpdated;
   final Map<String, String> feedStatuses; // exchangeId -> FeedStatus.name
   final bool feedsConnected;
+  final bool llmConfigured; // API key present
+  final DateTime? lastLlmAnalysisAt;
+  final String? lastDailySummary;
+  final DateTime? lastDailySummaryAt;
 
   const AppState({
     required this.strategies,
@@ -25,6 +29,10 @@ class AppState extends Equatable {
     required this.lastUpdated,
     this.feedStatuses = const {},
     this.feedsConnected = false,
+    this.llmConfigured = false,
+    this.lastLlmAnalysisAt,
+    this.lastDailySummary,
+    this.lastDailySummaryAt,
   });
 
   factory AppState.initial() {
@@ -56,6 +64,10 @@ class AppState extends Equatable {
     DateTime? lastUpdated,
     Map<String, String>? feedStatuses,
     bool? feedsConnected,
+    bool? llmConfigured,
+    DateTime? lastLlmAnalysisAt,
+    String? lastDailySummary,
+    DateTime? lastDailySummaryAt,
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
@@ -69,6 +81,10 @@ class AppState extends Equatable {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       feedStatuses: feedStatuses ?? this.feedStatuses,
       feedsConnected: feedsConnected ?? this.feedsConnected,
+      llmConfigured: llmConfigured ?? this.llmConfigured,
+      lastLlmAnalysisAt: lastLlmAnalysisAt ?? this.lastLlmAnalysisAt,
+      lastDailySummary: lastDailySummary ?? this.lastDailySummary,
+      lastDailySummaryAt: lastDailySummaryAt ?? this.lastDailySummaryAt,
     );
   }
 
@@ -91,7 +107,8 @@ class AppState extends Equatable {
   List<Object?> get props => [
         strategies, enabledExchangeIds, opportunities, trades, llmConfig,
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
-        feedStatuses, feedsConnected,
+        feedStatuses, feedsConnected, llmConfigured, lastLlmAnalysisAt,
+        lastDailySummary, lastDailySummaryAt,
       ];
 
   // ── JSON persistence ─────────────────────────────────────────────────────────

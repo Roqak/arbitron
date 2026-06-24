@@ -4,6 +4,7 @@ import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'domain/enums.dart';
 import 'domain/exchange.dart';
 import 'domain/llm_config.dart';
+import 'domain/llm_result.dart';
 import 'domain/opportunity.dart';
 import 'domain/strategy.dart';
 import 'domain/trade.dart';
@@ -11,6 +12,8 @@ import 'data/demo_data_service.dart';
 import 'data/price_feed_service.dart';
 import 'data/price_feed.dart';
 import 'data/opportunity_scanner.dart';
+import 'data/secure_key_store.dart';
+import 'data/llm_service.dart';
 
 part 'app_state.dart';
 
@@ -21,17 +24,29 @@ const List<String> _monitoredPairs = [
   'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'LINK/USDT', 'MATIC/USDT',
 ];
 
+/// Max opportunities to send to the LLM per scan batch (rate-limit safeguard).
+const int _maxLlmBatch = 5;
+
 class AppCubit extends HydratedCubit<AppState> {
   AppCubit() : super(AppState.initial()) {
     _initLiveFeeds();
+    _checkLlmConfigured();
   }
 
   late final PriceFeedService _priceFeedService = PriceFeedService();
   late final OpportunityScanner _scanner = OpportunityScanner(priceFeedService: _priceFeedService);
+  late final SecureKeyStore _keyStore = SecureKeyStore();
+  late final LlmService _llm = LlmService(keyStore: _keyStore);
 
   StreamSubscription<Map<String, FeedStatus>>? _statusSub;
   StreamSubscription<List<Opportunity>>? _oppSub;
   bool _feedsStarted = false;
+
+  // Track which opportunities we've already analyzed to avoid duplicate calls.
+  final Set<String> _analyzedOppIds = {};
+  // Track in-flight analysis to avoid overlapping calls for the same opp.
+  final Set<String> _inFlight = {};
+  Timer? _dailySummaryTimer;
 
   void _initLiveFeeds() {
     // Seed demo opportunities so the UI has content while feeds connect.
@@ -44,10 +59,17 @@ class AppCubit extends HydratedCubit<AppState> {
     _oppSub = _scanner.opportunities.listen(_onOpportunities);
     _scanner.start();
     _restartFeeds();
+    _scheduleDailySummary();
+  }
+
+  Future<void> _checkLlmConfigured() async {
+    final configured = await _llm.isConfigured();
+    if (state.llmConfigured != configured) {
+      emit(state.copyWith(llmConfigured: configured));
+    }
   }
 
   void _restartFeeds() {
-    // Only start CEX feeds for enabled exchanges that we have implementations for.
     final supported = state.enabledExchangeIds.where((id) {
       final ex = ExchangeCatalog.byId(id);
       return ex.kind == ExchangeKind.cex && _supportedFeedIds.contains(id);
@@ -60,7 +82,6 @@ class AppCubit extends HydratedCubit<AppState> {
   static const _supportedFeedIds = {'binance', 'coinbase', 'kraken', 'okx', 'bybit'};
 
   void _onFeedStatus(Map<String, FeedStatus> statuses) {
-    // Map FeedStatus -> simple bool: connected if any feed is connected.
     final anyConnected = statuses.values.any((s) => s == FeedStatus.connected);
     emit(state.copyWith(
       feedStatuses: statuses.map((k, v) => MapEntry(k, v.name)),
@@ -69,10 +90,92 @@ class AppCubit extends HydratedCubit<AppState> {
   }
 
   void _onOpportunities(List<Opportunity> opps) {
-    // Merge: keep live opportunities, but only emit if we have at least one
-    // (avoid wiping the list if a scan produces nothing momentarily).
     if (opps.isEmpty) return;
     emit(state.copyWith(opportunities: opps, lastUpdated: DateTime.now()));
+    // Trigger LLM analysis for top opportunities if configured.
+    _maybeAnalyzeBatch(opps);
+  }
+
+  // ── LLM analysis ────────────────────────────────────────────────────────────
+  Future<void> _maybeAnalyzeBatch(List<Opportunity> opps) async {
+    if (!state.llmConfigured) return;
+    final toAnalyze = opps.take(_maxLlmBatch).where((o) {
+      final key = '${o.id}';
+      return !_analyzedOppIds.contains(key) && !_inFlight.contains(key);
+    }).toList();
+    if (toAnalyze.isEmpty) return;
+
+    for (final o in toAnalyze) {
+      _inFlight.add(o.id);
+      _analyzeOpportunity(o);
+    }
+  }
+
+  Future<void> _analyzeOpportunity(Opportunity o) async {
+    final strategy = state.strategies.firstWhere(
+      (s) => s.type == o.strategy,
+      orElse: () => state.strategies.first,
+    );
+    final analysis = await _llm.analyzeOpportunity(
+      config: state.llmConfig,
+      opportunity: o,
+      strategy: strategy,
+      customInstructions: strategy.customInstructions,
+    );
+    _inFlight.remove(o.id);
+    if (analysis == null) return; // LLM failed; keep scanner-generated analysis
+    _analyzedOppIds.add(o.id);
+
+    // Enrich the opportunity with the LLM analysis text + score.
+    final enriched = Opportunity(
+      id: o.id,
+      pair: o.pair,
+      buyExchangeId: o.buyExchangeId,
+      sellExchangeId: o.sellExchangeId,
+      buyPrice: o.buyPrice,
+      sellPrice: o.sellPrice,
+      grossSpreadPct: o.grossSpreadPct,
+      estFeesUsd: o.estFeesUsd,
+      estSlippageUsd: o.estSlippageUsd,
+      netProfitUsd: o.netProfitUsd,
+      netProfitPct: o.netProfitPct,
+      confidenceScore: analysis.score,
+      strategy: o.strategy,
+      detectedAt: o.detectedAt,
+      analysisText: analysis.explanation,
+      isLive: o.isLive,
+    );
+
+    final updated = state.opportunities.map((e) => e.id == o.id ? enriched : e).toList();
+    emit(state.copyWith(opportunities: updated, lastLlmAnalysisAt: DateTime.now()));
+
+    // If autonomous mode is active, request an execution decision.
+    if (anyAutonomousActive && analysis.score >= 60) {
+      _maybeExecuteAutonomously(enriched, analysis, strategy);
+    }
+  }
+
+  // ── Autonomous execution ────────────────────────────────────────────────────
+  Future<void> _maybeExecuteAutonomously(Opportunity o, LlmAnalysis analysis, Strategy strategy) async {
+    if (state.autonomousPaused) return;
+    if (strategy.mode != ExecutionMode.autonomous || !strategy.enabled) return;
+
+    final decision = await _llm.executionDecision(
+      config: state.llmConfig,
+      opportunity: o,
+      analysis: analysis,
+      strategy: strategy,
+      portfolioExposure: state.portfolioValue,
+      openPositions: 0,
+      dailyPnl: state.todayPnl,
+    );
+    if (decision == null || !decision.execute) return;
+
+    // Risk guards (PRD §11.1).
+    if (state.todayPnl < -state.dailyLossCapUsd) return;
+    if (decision.suggestedSizeUsd > strategy.maxTradeUsd) return;
+
+    executeOpportunity(o, mode: ExecutionMode.autonomous);
   }
 
   // ── Strategies ─────────────────────────────────────────────────────────────
@@ -95,7 +198,6 @@ class AppCubit extends HydratedCubit<AppState> {
           ? [...state.enabledExchangeIds, id]
           : state.enabledExchangeIds.where((e) => e != id).toList(),
     ));
-    // Restart feeds with the new exchange set.
     if (_supportedFeedIds.contains(id)) _restartFeeds();
   }
 
@@ -109,7 +211,6 @@ class AppCubit extends HydratedCubit<AppState> {
 
   // ── Opportunities ──────────────────────────────────────────────────────────
   void refreshOpportunities() {
-    // Manual refresh: re-seed from demo data (live feed will replace shortly).
     emit(state.copyWith(
       opportunities: DemoDataService.opportunities(count: 14),
       lastUpdated: DateTime.now(),
@@ -147,10 +248,65 @@ class AppCubit extends HydratedCubit<AppState> {
           : 'Slippage exceeded estimate and eroded the edge.',
     );
     emit(state.copyWith(trades: [trade, ...state.trades]));
+    // Generate an LLM debrief if configured.
+    _maybeGenerateDebrief(trade);
   }
 
+  Future<void> _maybeGenerateDebrief(TradeRecord trade) async {
+    if (!state.llmConfigured) return;
+    final debrief = await _llm.postTradeDebrief(config: state.llmConfig, trade: trade);
+    if (debrief == null) return;
+    final updated = state.trades.map((t) => t.id == trade.id ? TradeRecord(
+      id: t.id, executedAt: t.executedAt, strategyId: t.strategyId, strategyName: t.strategyName,
+      strategyType: t.strategyType, pair: t.pair, buyExchangeId: t.buyExchangeId, sellExchangeId: t.sellExchangeId,
+      sizeUsd: t.sizeUsd, entryPrice: t.entryPrice, exitPrice: t.exitPrice, grossPnl: t.grossPnl, netPnl: t.netPnl,
+      feesUsd: t.feesUsd, slippageUsd: t.slippageUsd, mode: t.mode, llmDecisionJson: t.llmDecisionJson,
+      debrief: debrief, profit: t.profit,
+    ) : t).toList();
+    emit(state.copyWith(trades: updated));
+  }
+
+  // ── Daily summary ───────────────────────────────────────────────────────────
+  void _scheduleDailySummary() {
+    _dailySummaryTimer?.cancel();
+    // Check every hour if it's time for a daily summary (default: 20:00 local).
+    _dailySummaryTimer = Timer.periodic(const Duration(hours: 1), (_) {
+      final now = DateTime.now();
+      if (now.hour == 20 && now.minute < 5) {
+        _maybeGenerateDailySummary();
+      }
+    });
+  }
+
+  Future<void> _maybeGenerateDailySummary() async {
+    if (!state.llmConfigured) return;
+    final todayTrades = state.trades.where((t) => DateTime.now().difference(t.executedAt).inHours < 24).toList();
+    if (todayTrades.isEmpty) return;
+    final summary = await _llm.dailySummary(
+      config: state.llmConfig,
+      trades: todayTrades,
+      totalPnl: state.todayPnl,
+    );
+    if (summary == null) return;
+    emit(state.copyWith(lastDailySummary: summary.narrative, lastDailySummaryAt: DateTime.now()));
+  }
+
+  /// Manually trigger the daily summary (for the Settings screen).
+  Future<void> generateDailySummary() async => _maybeGenerateDailySummary();
+
   // ── LLM config ──────────────────────────────────────────────────────────────
-  void updateLlmConfig(LlmConfig c) => emit(state.copyWith(llmConfig: c));
+  Future<void> saveLlmConfig(LlmConfig config, String? apiKey) async {
+    emit(state.copyWith(llmConfig: config));
+    if (apiKey != null && apiKey.isNotEmpty) {
+      await _keyStore.writeApiKey(apiKey);
+    }
+    await _checkLlmConfigured();
+  }
+
+  Future<void> clearLlmKey() async {
+    await _keyStore.deleteApiKey();
+    await _checkLlmConfigured();
+  }
 
   // ── Risk ────────────────────────────────────────────────────────────────────
   void setDailyLossCap(double cap) => emit(state.copyWith(dailyLossCapUsd: cap));
@@ -168,8 +324,10 @@ class AppCubit extends HydratedCubit<AppState> {
   Future<void> close() {
     _statusSub?.cancel();
     _oppSub?.cancel();
+    _dailySummaryTimer?.cancel();
     _scanner.dispose();
     _priceFeedService.dispose();
+    _llm.dispose();
     return super.close();
   }
 }
