@@ -15,6 +15,7 @@ import 'data/price_feed.dart';
 import 'data/opportunity_scanner.dart';
 import 'data/secure_key_store.dart';
 import 'data/llm_service.dart';
+import 'data/api_server.dart';
 
 part 'app_state.dart';
 
@@ -38,6 +39,23 @@ class AppCubit extends HydratedCubit<AppState> {
   late final OpportunityScanner _scanner = OpportunityScanner(priceFeedService: _priceFeedService);
   late final SecureKeyStore _keyStore = SecureKeyStore();
   late final LlmService _llm = LlmService(keyStore: _keyStore);
+  ApiServer? _apiServer;
+
+  bool get apiRunning => _apiServer?.isRunning ?? false;
+  int? get apiPort => _apiServer?.port;
+  String? get apiToken => _apiServer?.token;
+
+  Future<void> startApiServer({int port = 8765, required String token}) async {
+    _apiServer = ApiServer(cubit: this);
+    await _apiServer!.start(port: port, token: token);
+    emit(state.copyWith(apiRunning: true, apiPort: port, apiToken: token));
+  }
+
+  Future<void> stopApiServer() async {
+    await _apiServer?.stop();
+    _apiServer = null;
+    emit(state.copyWith(apiRunning: false, apiPort: null, apiToken: null));
+  }
 
   StreamSubscription<Map<String, FeedStatus>>? _statusSub;
   StreamSubscription<List<Opportunity>>? _oppSub;
@@ -312,6 +330,11 @@ class AppCubit extends HydratedCubit<AppState> {
   Future<void> clearLlmKey() async {
     await _keyStore.deleteApiKey();
     await _checkLlmConfigured();
+  }
+
+  /// Fetches available models from the configured endpoint. See PRD §7.1.
+  Future<List<String>?> fetchLlmModels({required String endpoint, String? apiKey}) async {
+    return _llm.fetchModels(endpoint: endpoint, apiKey: apiKey);
   }
 
   // ── Risk ────────────────────────────────────────────────────────────────────

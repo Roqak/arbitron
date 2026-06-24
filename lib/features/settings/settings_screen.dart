@@ -60,6 +60,10 @@ class SettingsScreen extends StatelessWidget {
                   _ListTile(title: 'Retention period', subtitle: '180 days', trailing: const Icon(Icons.chevron_right, size: 20), onTap: () {}),
                 ]),
                 const SizedBox(height: AppSpacing.section),
+                _Section(title: 'Power User API', children: [
+                  _ApiServerTile(running: state.apiRunning, port: state.apiPort, token: state.apiToken),
+                ]),
+                const SizedBox(height: AppSpacing.section),
                 _AboutTile(),
               ],
             );
@@ -209,6 +213,11 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
   late final TextEditingController _endpointCtrl;
   late final TextEditingController _modelCtrl;
   late final TextEditingController _keyCtrl;
+  List<String> _models = const [];
+  String? _selectedModel;
+  bool _fetching = false;
+  bool _fetchFailed = false;
+  bool _manualEntry = false;
 
   @override
   void initState() {
@@ -216,6 +225,7 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
     _endpointCtrl = TextEditingController(text: widget.existing.endpoint);
     _modelCtrl = TextEditingController(text: widget.existing.model);
     _keyCtrl = TextEditingController();
+    _selectedModel = widget.existing.model;
   }
 
   @override
@@ -224,6 +234,29 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
     _modelCtrl.dispose();
     _keyCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchModels() async {
+    final endpoint = _endpointCtrl.text.trim().isEmpty ? widget.existing.endpoint : _endpointCtrl.text.trim();
+    final apiKey = _keyCtrl.text.trim().isEmpty ? null : _keyCtrl.text.trim();
+    setState(() { _fetching = true; _fetchFailed = false; });
+    final cubit = context.read<AppCubit>();
+    final models = await cubit.fetchLlmModels(endpoint: endpoint, apiKey: apiKey);
+    if (!mounted) return;
+    setState(() {
+      _fetching = false;
+      if (models == null || models.isEmpty) {
+        _fetchFailed = true;
+        _manualEntry = true;
+      } else {
+        _models = models;
+        _manualEntry = false;
+        // Keep existing selection if still available, else pick first.
+        if (!models.contains(_selectedModel)) {
+          _selectedModel = models.first;
+        }
+      }
+    });
   }
 
   @override
@@ -251,15 +284,61 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
               const SizedBox(height: 6),
               TextField(controller: _endpointCtrl, decoration: const InputDecoration(hintText: 'https://api.openai.com/v1')),
               const SizedBox(height: AppSpacing.lg),
-              _Label('Model'),
-              const SizedBox(height: 6),
-              TextField(controller: _modelCtrl, decoration: const InputDecoration(hintText: 'gpt-4o')),
-              const SizedBox(height: AppSpacing.lg),
               _Label('API key'),
               const SizedBox(height: 6),
               TextField(controller: _keyCtrl, obscureText: true, decoration: const InputDecoration(hintText: 'sk-\u2026', suffixIcon: Icon(Icons.lock_outline, size: 18))),
               const SizedBox(height: AppSpacing.xs),
               Text('Stored in device keychain. Never transmitted to Arbitron servers.', style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
+              const SizedBox(height: AppSpacing.lg),
+              // Model selection: fetchable dropdown or manual entry
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _Label('Model'),
+                  if (_models.isNotEmpty || _manualEntry)
+                    TextButton(
+                      onPressed: () => setState(() => _manualEntry = !_manualEntry),
+                      child: Text(_manualEntry ? 'Use dropdown' : 'Enter manually'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (!_manualEntry && _models.isNotEmpty) ...[
+                _ModelDropdown(
+                  models: _models,
+                  selected: _selectedModel,
+                  onChanged: (m) => setState(() => _selectedModel = m),
+                ),
+                const SizedBox(height: 8),
+                Text('${_models.length} models available', style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
+              ] else if (!_manualEntry && _models.isEmpty) ...[
+                // Initial state: prompt to fetch
+                OutlinedButton.icon(
+                  onPressed: _fetching ? null : _fetchModels,
+                  icon: _fetching
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.download_outlined, size: 18),
+                  label: Text(_fetching ? 'Fetching\u2026' : 'Fetch available models'),
+                ),
+                if (_fetchFailed) ...[
+                  const SizedBox(height: 8),
+                  Text('Could not fetch models. Check your endpoint and key, or enter a model name manually.',
+                      style: theme.textTheme.bodySmall!.copyWith(color: theme.danger)),
+                  const SizedBox(height: 4),
+                  TextButton(onPressed: () => setState(() => _manualEntry = true), child: const Text('Enter model name manually')),
+                ],
+              ] else ...[
+                // Manual entry
+                TextField(controller: _modelCtrl, decoration: const InputDecoration(hintText: 'gpt-4o')),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _fetching ? null : _fetchModels,
+                  icon: _fetching
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh, size: 16),
+                  label: Text(_fetching ? 'Fetching\u2026' : 'Fetch available models'),
+                ),
+              ],
               const SizedBox(height: AppSpacing.xxl),
               Row(
                 children: [
@@ -268,9 +347,12 @@ class _LlmConfigSheetState extends State<_LlmConfigSheet> {
                   const SizedBox(width: AppSpacing.md),
                   FilledButton(
                     onPressed: () async {
+                      final model = _manualEntry
+                          ? (_modelCtrl.text.trim().isEmpty ? widget.existing.model : _modelCtrl.text.trim())
+                          : (_selectedModel ?? widget.existing.model);
                       final cfg = widget.existing.copyWith(
                         endpoint: _endpointCtrl.text.trim().isEmpty ? widget.existing.endpoint : _endpointCtrl.text.trim(),
-                        model: _modelCtrl.text.trim().isEmpty ? widget.existing.model : _modelCtrl.text.trim(),
+                        model: model,
                         configured: true,
                       );
                       final key = _keyCtrl.text.trim();
@@ -594,6 +676,104 @@ class _AboutTile extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Text('Cryptocurrency trading involves significant risk of loss. AI analysis is not financial advice. Past performance does not predict future results.',
               style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted, height: 1.5)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModelDropdown extends StatelessWidget {
+  final List<String> models;
+  final String? selected;
+  final void Function(String) onChanged;
+  const _ModelDropdown({required this.models, required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.surfaceRaised,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: theme.borderSubtle, width: 1),
+      ),
+      child: DropdownButton<String>(
+        value: selected,
+        isExpanded: true,
+        underline: const SizedBox(),
+        menuMaxHeight: 300,
+        items: models.map((m) => DropdownMenuItem(value: m, child: Text(m, style: theme.textTheme.bodyMedium))).toList(),
+        onChanged: (v) { if (v != null) onChanged(v); },
+      ),
+    );
+  }
+}
+
+class _ApiServerTile extends StatelessWidget {
+  final bool running;
+  final int? port;
+  final String? token;
+  const _ApiServerTile({required this.running, this.port, this.token});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cubit = context.read<AppCubit>();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.api_outlined, color: theme.textSecondary, size: 22),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Local REST API', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(running
+                        ? 'Running on port $port \u2014 http://localhost:$port/api/v1/status'
+                        : 'Expose live data as JSON for external tools',
+                      style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: running,
+                onChanged: (v) async {
+                  if (v) {
+                    final generatedToken = 'arbitron_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
+                    await cubit.startApiServer(port: 8765, token: generatedToken);
+                  } else {
+                    await cubit.stopApiServer();
+                  }
+                },
+                activeColor: theme.accent,
+              ),
+            ],
+          ),
+          if (running && token != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(color: theme.surfaceRaised, borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Auth token', style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
+                  const SizedBox(height: 4),
+                  SelectableText(token!, style: theme.textTheme.bodyMedium!.copyWith(fontFamily: 'monospace', color: theme.textPrimary, fontFeatures: const [FontFeature.tabularFigures()])),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text('Endpoints: /status /opportunities /trades /strategies /portfolio',
+                      style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

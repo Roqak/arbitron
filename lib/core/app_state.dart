@@ -17,6 +17,9 @@ class AppState extends Equatable {
   final DateTime? lastLlmAnalysisAt;
   final String? lastDailySummary;
   final DateTime? lastDailySummaryAt;
+  final bool apiRunning;
+  final int? apiPort;
+  final String? apiToken;
 
   const AppState({
     required this.strategies,
@@ -35,6 +38,9 @@ class AppState extends Equatable {
     this.lastLlmAnalysisAt,
     this.lastDailySummary,
     this.lastDailySummaryAt,
+    this.apiRunning = false,
+    this.apiPort,
+    this.apiToken,
   });
 
   factory AppState.initial() {
@@ -71,6 +77,9 @@ class AppState extends Equatable {
     DateTime? lastLlmAnalysisAt,
     String? lastDailySummary,
     DateTime? lastDailySummaryAt,
+    bool? apiRunning,
+    int? apiPort,
+    String? apiToken,
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
@@ -89,6 +98,9 @@ class AppState extends Equatable {
       lastLlmAnalysisAt: lastLlmAnalysisAt ?? this.lastLlmAnalysisAt,
       lastDailySummary: lastDailySummary ?? this.lastDailySummary,
       lastDailySummaryAt: lastDailySummaryAt ?? this.lastDailySummaryAt,
+      apiRunning: apiRunning ?? this.apiRunning,
+      apiPort: apiPort ?? this.apiPort,
+      apiToken: apiToken ?? this.apiToken,
     );
   }
 
@@ -112,7 +124,7 @@ class AppState extends Equatable {
         strategies, customStrategies, enabledExchangeIds, opportunities, trades, llmConfig,
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
         feedStatuses, feedsConnected, llmConfigured, lastLlmAnalysisAt,
-        lastDailySummary, lastDailySummaryAt,
+        lastDailySummary, lastDailySummaryAt, apiRunning, apiPort, apiToken,
       ];
 
   // ── JSON persistence ─────────────────────────────────────────────────────────

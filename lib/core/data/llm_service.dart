@@ -43,6 +43,44 @@ class LlmService {
     return key != null && key.isNotEmpty;
   }
 
+  /// Fetches the list of available models from the configured endpoint's
+  /// `/v1/models` (or `/models`) endpoint. See PRD §7.1 — "User-selectable
+  /// from a dropdown populated via `/v1/models`".
+  /// Returns a list of model IDs, or null on failure.
+  Future<List<String>?> fetchModels({required String endpoint, String? apiKey}) async {
+    if (_disposed) return null;
+    final key = apiKey ?? await keyStore.readApiKey();
+    if (key == null || key.isEmpty) return null;
+
+    try {
+      var base = endpoint.endsWith('/') ? endpoint.substring(0, endpoint.length - 1) : endpoint;
+      var url = base.endsWith('/v1') ? '$base/models' : '$base/models';
+      final response = await _dio.get<dynamic>(
+        url,
+        options: Options(
+          headers: {'Authorization': 'Bearer $key'},
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+      if (response.statusCode != 200) return null;
+      final data = response.data;
+      final jsonData = data is String ? jsonDecode(data) as Map<String, dynamic> : data as Map<String, dynamic>;
+      final modelsList = jsonData['data'] as List? ?? [];
+      final ids = modelsList
+          .map((m) => (m as Map<String, dynamic>)['id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toList()
+        ..sort();
+      return ids.isEmpty ? null : ids;
+    } on DioException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Generic chat completion call. Returns the assistant message content, or
   /// null on any failure.
   Future<String?> _chat({
