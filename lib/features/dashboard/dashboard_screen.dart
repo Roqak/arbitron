@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/fmt.dart';
 import '../../core/widgets/widgets.dart';
+import 'leaderboard_sheet.dart';
 
 /// Dashboard — live overview. See PRD §8.1 and DESIGN.md §12.1.
 class DashboardScreen extends StatelessWidget {
@@ -81,6 +82,22 @@ class DashboardScreen extends StatelessWidget {
                         _SectionHeader(title: 'Market Health'),
                         const SizedBox(height: AppSpacing.md),
                         _MarketHealth(exchangeIds: state.enabledExchangeIds, feedStatuses: state.feedStatuses),
+                        const SizedBox(height: AppSpacing.section),
+                        _SectionHeader(title: 'Community'),
+                        const SizedBox(height: AppSpacing.md),
+                        ArbitronCard(
+                          onTap: () => showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true, builder: (_) => const LeaderboardSheet()),
+                          child: Row(
+                            children: [
+                              Icon(Icons.leaderboard_outlined, color: theme.accent, size: 24),
+                              const SizedBox(width: AppSpacing.md),
+                              Expanded(child: Text('Leaderboard', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w600))),
+                              Text('Opt in', style: theme.textTheme.labelMedium!.copyWith(color: theme.textMuted)),
+                              const SizedBox(width: 8),
+                              Icon(Icons.chevron_right, size: 20, color: theme.textMuted),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
