@@ -11,15 +11,17 @@ class AppState extends Equatable {
   final double dailyLossCapUsd;
   final String themeBrightness; // 'dark' | 'light'
   final DateTime lastUpdated;
-  final Map<String, String> feedStatuses; // exchangeId -> FeedStatus.name
+  final Map<String, String> feedStatuses;
   final bool feedsConnected;
-  final bool llmConfigured; // API key present
+  final bool llmConfigured;
   final DateTime? lastLlmAnalysisAt;
   final String? lastDailySummary;
   final DateTime? lastDailySummaryAt;
   final bool apiRunning;
   final int? apiPort;
   final String? apiToken;
+  final double portfolioValue; // real, fetched from exchanges
+  final bool executing; // a trade is being placed right now
 
   const AppState({
     required this.strategies,
@@ -41,17 +43,18 @@ class AppState extends Equatable {
     this.apiRunning = false,
     this.apiPort,
     this.apiToken,
+    this.portfolioValue = 0,
+    this.executing = false,
   });
 
   factory AppState.initial() {
     final strategies = DemoDataService.defaultStrategies();
     final opps = DemoDataService.opportunities(count: 14);
-    final trades = DemoDataService.tradeHistory(count: 18);
     return AppState(
       strategies: strategies,
       enabledExchangeIds: const ['binance', 'coinbase', 'kraken'],
       opportunities: opps,
-      trades: trades,
+      trades: const [], // no demo trades — real trades only
       llmConfig: const LlmConfig(),
       autonomousPaused: false,
       dailyLossCapUsd: 250,
@@ -80,6 +83,8 @@ class AppState extends Equatable {
     bool? apiRunning,
     int? apiPort,
     String? apiToken,
+    double? portfolioValue,
+    bool? executing,
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
@@ -101,6 +106,8 @@ class AppState extends Equatable {
       apiRunning: apiRunning ?? this.apiRunning,
       apiPort: apiPort ?? this.apiPort,
       apiToken: apiToken ?? this.apiToken,
+      portfolioValue: portfolioValue ?? this.portfolioValue,
+      executing: executing ?? this.executing,
     );
   }
 
@@ -117,14 +124,13 @@ class AppState extends Equatable {
 
   double get totalPnl => trades.fold(0.0, (sum, t) => sum + t.netPnl);
 
-  double get portfolioValue => 12480.00; // demo constant for MVP
-
   @override
   List<Object?> get props => [
         strategies, customStrategies, enabledExchangeIds, opportunities, trades, llmConfig,
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
         feedStatuses, feedsConnected, llmConfigured, lastLlmAnalysisAt,
         lastDailySummary, lastDailySummaryAt, apiRunning, apiPort, apiToken,
+        portfolioValue, executing,
       ];
 
   // ── JSON persistence ─────────────────────────────────────────────────────────

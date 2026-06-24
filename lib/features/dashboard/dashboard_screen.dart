@@ -25,7 +25,10 @@ class DashboardScreen extends StatelessWidget {
         return Scaffold(
           body: SafeArea(
             child: RefreshIndicator(
-              onRefresh: () async => context.read<AppCubit>().refreshOpportunities(),
+              onRefresh: () async {
+                context.read<AppCubit>().refreshOpportunities();
+                await context.read<AppCubit>().refreshPortfolio();
+              },
               child: ListView(
                 padding: EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.md, AppSpacing.screenH, AppSpacing.xxxl + 56),
                 children: [

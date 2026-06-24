@@ -16,6 +16,8 @@ import 'data/opportunity_scanner.dart';
 import 'data/secure_key_store.dart';
 import 'data/llm_service.dart';
 import 'data/api_server.dart';
+import 'data/trading_service.dart';
+import 'domain/credentials.dart';
 
 part 'app_state.dart';
 
@@ -33,12 +35,14 @@ class AppCubit extends HydratedCubit<AppState> {
   AppCubit() : super(AppState.initial()) {
     _initLiveFeeds();
     _checkLlmConfigured();
+    _refreshPortfolio();
   }
 
   late final PriceFeedService _priceFeedService = PriceFeedService();
   late final OpportunityScanner _scanner = OpportunityScanner(priceFeedService: _priceFeedService);
   late final SecureKeyStore _keyStore = SecureKeyStore();
   late final LlmService _llm = LlmService(keyStore: _keyStore);
+  late final TradingService _trading = TradingService(keyStore: _keyStore);
   ApiServer? _apiServer;
 
   bool get apiRunning => _apiServer?.isRunning ?? false;
@@ -193,7 +197,7 @@ class AppCubit extends HydratedCubit<AppState> {
     if (state.todayPnl < -state.dailyLossCapUsd) return;
     if (decision.suggestedSizeUsd > strategy.maxTradeUsd) return;
 
-    executeOpportunity(o, mode: ExecutionMode.autonomous);
+    await executeOpportunity(o, mode: ExecutionMode.autonomous);
   }
 
   // ── Custom strategies (no-code builder) ────────────────────────────────────
@@ -241,39 +245,40 @@ class AppCubit extends HydratedCubit<AppState> {
   }
 
   // ── Trades ────────────────────────────────────────────────────────────────
-  void executeOpportunity(Opportunity o, {ExecutionMode? mode}) {
+  /// Executes an arbitrage opportunity for real. Attempts to place market
+  /// orders on both exchanges via the TradingService. If credentials are
+  /// missing or the exchange isn't supported, records a failed trade with
+  /// the reason. See PRD §6.
+  Future<void> executeOpportunity(Opportunity o, {ExecutionMode? mode}) async {
     final strategy = state.strategies.firstWhere(
       (s) => s.type == o.strategy,
       orElse: () => state.strategies.first,
     );
-    final trade = TradeRecord(
-      id: 'trade_${DateTime.now().millisecondsSinceEpoch}',
-      executedAt: DateTime.now(),
+    final execMode = mode ?? strategy.mode;
+
+    // Show a pending state immediately so the user gets feedback.
+    emit(state.copyWith(executing: true));
+
+    // Attempt real execution.
+    final trade = await _trading.executeArbitrage(
+      opportunity: o,
+      sizeUsd: strategy.maxTradeUsd,
+      mode: execMode,
       strategyId: strategy.id,
       strategyName: strategy.name,
-      strategyType: strategy.type,
-      pair: o.pair,
-      buyExchangeId: o.buyExchangeId,
-      sellExchangeId: o.sellExchangeId,
-      sizeUsd: strategy.maxTradeUsd,
-      entryPrice: o.buyPrice,
-      exitPrice: o.sellPrice,
-      grossPnl: o.netProfitUsd + o.estFeesUsd + o.estSlippageUsd,
-      netPnl: o.netProfitUsd,
-      feesUsd: o.estFeesUsd,
-      slippageUsd: o.estSlippageUsd,
-      mode: mode ?? strategy.mode,
-      profit: o.netProfitUsd >= 0,
-      llmDecisionJson: o.analysisText,
-      debrief: o.netProfitUsd >= 0
-          ? 'Trade captured the full spread with slippage within expectations.'
-          : 'Slippage exceeded estimate and eroded the edge.',
     );
+
+    emit(state.copyWith(executing: false));
+
+    if (trade == null) return; // shouldn't happen — _failedTrade always returns
+
+    // Record the trade (success or failure).
     emit(state.copyWith(trades: [trade, ...state.trades]));
-    // Keep the LLM's trade history context up to date (v2.5 fine-tuning).
     _llm.tradeHistory = [trade, ...state.trades];
-    // Generate an LLM debrief if configured.
     _maybeGenerateDebrief(trade);
+
+    // Refresh portfolio after execution.
+    _refreshPortfolio();
   }
 
   Future<void> _maybeGenerateDebrief(TradeRecord trade) async {
@@ -342,6 +347,36 @@ class AppCubit extends HydratedCubit<AppState> {
 
   // ── Theme ───────────────────────────────────────────────────────────────────
   void toggleTheme() => emit(state.copyWith(themeBrightness: state.themeBrightness == 'dark' ? 'light' : 'dark'));
+
+  // ── Portfolio ───────────────────────────────────────────────────────────────
+  /// Fetches real portfolio value from connected exchanges. Replaces the
+  /// hardcoded demo constant.
+  Future<void> _refreshPortfolio() async {
+    try {
+      final value = await _trading.fetchPortfolioValueUsd();
+      emit(state.copyWith(portfolioValue: value));
+    } catch (_) {
+      // Keep the current value if fetch fails
+    }
+  }
+
+  /// Manually trigger a portfolio refresh (for pull-to-refresh on Dashboard).
+  Future<void> refreshPortfolio() async => _refreshPortfolio();
+
+  // ── Exchange credentials ───────────────────────────────────────────────────
+  Future<void> saveExchangeCredentials(ExchangeCredentials creds) async {
+    await _trading.saveCredentials(creds);
+    _refreshPortfolio();
+  }
+
+  Future<void> deleteExchangeCredentials(String exchangeId) async {
+    await _trading.deleteCredentials(exchangeId);
+    _refreshPortfolio();
+  }
+
+  Future<bool> hasExchangeCredentials(String exchangeId) => _trading.hasCredentials(exchangeId);
+
+  Future<Set<String>> connectedTradingExchanges() => _trading.connectedTradingExchanges();
 
   @override
   AppState? fromJson(Map<String, dynamic> json) => AppState.fromJson(json);

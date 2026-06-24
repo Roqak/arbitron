@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/app_cubit.dart';
 import '../../core/domain/exchange.dart';
+import '../../core/domain/credentials.dart';
 import '../../core/domain/llm_config.dart';
 import '../../core/domain/trade.dart';
 import '../../core/data/trade_exporter.dart';
@@ -287,8 +288,81 @@ class _ExchangeRow extends StatelessWidget {
         const SizedBox(height: 2),
         MonoText('${exchange.region} \u00b7 M ${Fmt.pctRaw(exchange.makerFee * 100, decimals: 2)} \u00b7 T ${Fmt.pctRaw(exchange.takerFee * 100, decimals: 2)}', size: 10, color: theme.textMuted),
       ])),
+      IconButton(icon: const Icon(Icons.key_outlined, size: 18), onPressed: () => _showCredentialSheet(context, exchange.id), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
       Switch(value: enabled, onChanged: (v) => context.read<AppCubit>().setExchangeEnabled(exchange.id, v), activeColor: theme.accent),
     ]));
+  }
+
+  void _showCredentialSheet(BuildContext context, String exchangeId) {
+    showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true, builder: (_) => _ExchangeCredentialSheet(exchangeId: exchangeId));
+  }
+}
+
+class _ExchangeCredentialSheet extends StatefulWidget {
+  final String exchangeId;
+  const _ExchangeCredentialSheet({required this.exchangeId});
+  @override
+  State<_ExchangeCredentialSheet> createState() => _ExchangeCredentialSheetState();
+}
+
+class _ExchangeCredentialSheetState extends State<_ExchangeCredentialSheet> {
+  final _keyCtrl = TextEditingController();
+  final _secretCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _hasCreds = false;
+  bool _needsPassphrase = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _needsPassphrase = widget.exchangeId == 'okx';
+    _checkExisting();
+  }
+
+  @override
+  void dispose() {
+    _keyCtrl.dispose(); _secretCtrl.dispose(); _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkExisting() async {
+    final has = await context.read<AppCubit>().hasExchangeCredentials(widget.exchangeId);
+    if (mounted) setState(() => _hasCreds = has);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ex = ExchangeCatalog.byId(widget.exchangeId);
+    return DraggableScrollableSheet(initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.85, expand: false, builder: (context, sc) {
+      return Container(color: theme.surfaceOverlay, child: ListView(controller: sc, padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, AppSpacing.xxxl), children: [
+        Center(child: Container(width: 32, height: 4, decoration: BoxDecoration(color: theme.borderStrong, borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: AppSpacing.xl),
+        Text('${ex.name} API Keys', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text('Stored in device keychain. Required for real trade execution.', style: theme.textTheme.bodySmall?.copyWith(color: theme.textMuted)),
+        const SizedBox(height: AppSpacing.xl),
+        if (_hasCreds) Padding(padding: const EdgeInsets.only(bottom: AppSpacing.lg), child: StatusChip(label: 'CREDENTIALS SAVED', tone: ChipTone.accent)),
+        _Lbl('API KEY'), const SizedBox(height: 6), TextField(controller: _keyCtrl, decoration: const InputDecoration(hintText: 'Your API key')),
+        const SizedBox(height: AppSpacing.lg),
+        _Lbl('API SECRET'), const SizedBox(height: 6), TextField(controller: _secretCtrl, obscureText: true, decoration: const InputDecoration(hintText: 'Your API secret')),
+        if (_needsPassphrase) ...[const SizedBox(height: AppSpacing.lg), _Lbl('PASSPHRASE'), const SizedBox(height: 6), TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(hintText: 'OKX passphrase'))],
+        const SizedBox(height: AppSpacing.xl),
+        Row(children: [
+          if (_hasCreds) OutlinedButton(onPressed: () async { await context.read<AppCubit>().deleteExchangeCredentials(widget.exchangeId); if (mounted) { setState(() => _hasCreds = false); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credentials deleted'), duration: Duration(seconds: 2))); } }, style: OutlinedButton.styleFrom(foregroundColor: theme.danger), child: const Text('Delete')) else const Spacer(),
+          const Spacer(),
+          OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          const SizedBox(width: AppSpacing.md),
+          FilledButton(onPressed: () async {
+            if (_keyCtrl.text.trim().isEmpty || _secretCtrl.text.trim().isEmpty) return;
+            await context.read<AppCubit>().saveExchangeCredentials(ExchangeCredentials(exchangeId: widget.exchangeId, apiKey: _keyCtrl.text.trim(), apiSecret: _secretCtrl.text.trim(), passphrase: _passCtrl.text.trim().isEmpty ? null : _passCtrl.text.trim()));
+            if (!context.mounted) return;
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credentials saved'), duration: Duration(seconds: 2)));
+          }, child: const Text('Save')),
+        ]),
+      ]));
+    });
   }
 }
 
