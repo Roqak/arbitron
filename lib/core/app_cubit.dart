@@ -50,6 +50,8 @@ class AppCubit extends HydratedCubit<AppState> {
   Timer? _dailySummaryTimer;
 
   void _initLiveFeeds() {
+    // Sync trade history to the LLM service for in-context fine-tuning (v2.5).
+    _llm.tradeHistory = state.trades;
     // Seed demo opportunities so the UI has content while feeds connect.
     emit(state.copyWith(
       opportunities: DemoDataService.opportunities(count: 14),
@@ -253,6 +255,8 @@ class AppCubit extends HydratedCubit<AppState> {
           : 'Slippage exceeded estimate and eroded the edge.',
     );
     emit(state.copyWith(trades: [trade, ...state.trades]));
+    // Keep the LLM's trade history context up to date (v2.5 fine-tuning).
+    _llm.tradeHistory = [trade, ...state.trades];
     // Generate an LLM debrief if configured.
     _maybeGenerateDebrief(trade);
   }

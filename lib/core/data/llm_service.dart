@@ -7,6 +7,7 @@ import '../domain/strategy.dart';
 import '../domain/trade.dart';
 import 'secure_key_store.dart';
 import 'llm_prompts.dart';
+import 'trade_history_summarizer.dart';
 
 /// Client for the OpenAI-compatible LLM API. Handles chat completions for
 /// analysis, decisions, debriefs, and daily summaries. See PRD §7.
@@ -26,6 +27,15 @@ class LlmService {
   ));
 
   bool _disposed = false;
+
+  /// The user's trade history, injected into the system prompt so the LLM
+  /// learns from past outcomes (in-context fine-tuning, PRD §12 v2.5).
+  List<TradeRecord> _tradeHistory = const [];
+  set tradeHistory(List<TradeRecord> value) => _tradeHistory = value;
+
+  /// The enhanced system prompt with trade history summary injected.
+  String get _systemPrompt =>
+      TradeHistorySummarizer.buildEnhancedSystemPrompt(LlmPrompts.systemPrompt, _tradeHistory);
 
   /// Whether the LLM is configured (endpoint set + key present).
   Future<bool> isConfigured() async {
@@ -61,7 +71,7 @@ class LlmService {
         data: jsonEncode({
           'model': config.model,
           'messages': [
-            {'role': 'system', 'content': LlmPrompts.systemPrompt},
+            {'role': 'system', 'content': _systemPrompt},
             {'role': 'user', 'content': userPrompt},
           ],
           'temperature': temperature,

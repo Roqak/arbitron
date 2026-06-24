@@ -59,7 +59,16 @@ class DashboardScreen extends StatelessWidget {
                         else
                           Column(children: activeStrategies.map((s) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _StrategySummaryCard(strategy: s))).toList()),
                         const SizedBox(height: AppSpacing.section),
-                        _SectionHeader(title: 'AI Activity', trailing: state.llmConfigured ? StatusChip(label: 'LLM on', tone: ChipTone.accent) : StatusChip(label: 'LLM off', tone: ChipTone.neutral)),
+                        _SectionHeader(title: 'AI Activity', trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (state.trades.length >= 5) Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: StatusChip(label: 'Learning', tone: ChipTone.info, icon: Icons.school_outlined),
+                            ),
+                            state.llmConfigured ? StatusChip(label: 'LLM on', tone: ChipTone.accent) : StatusChip(label: 'LLM off', tone: ChipTone.neutral),
+                          ],
+                        )),
                         const SizedBox(height: AppSpacing.md),
                         _AiActivityFeed(opportunities: state.opportunities.take(6).toList()),
                         if (state.lastDailySummary != null) ...[
