@@ -10,6 +10,8 @@ class AppState extends Equatable {
   final double dailyLossCapUsd;
   final String themeBrightness; // 'dark' | 'light'
   final DateTime lastUpdated;
+  final Map<String, String> feedStatuses; // exchangeId -> FeedStatus.name
+  final bool feedsConnected;
 
   const AppState({
     required this.strategies,
@@ -21,6 +23,8 @@ class AppState extends Equatable {
     required this.dailyLossCapUsd,
     required this.themeBrightness,
     required this.lastUpdated,
+    this.feedStatuses = const {},
+    this.feedsConnected = false,
   });
 
   factory AppState.initial() {
@@ -50,6 +54,8 @@ class AppState extends Equatable {
     double? dailyLossCapUsd,
     String? themeBrightness,
     DateTime? lastUpdated,
+    Map<String, String>? feedStatuses,
+    bool? feedsConnected,
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
@@ -61,6 +67,8 @@ class AppState extends Equatable {
       dailyLossCapUsd: dailyLossCapUsd ?? this.dailyLossCapUsd,
       themeBrightness: themeBrightness ?? this.themeBrightness,
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      feedStatuses: feedStatuses ?? this.feedStatuses,
+      feedsConnected: feedsConnected ?? this.feedsConnected,
     );
   }
 
@@ -83,6 +91,7 @@ class AppState extends Equatable {
   List<Object?> get props => [
         strategies, enabledExchangeIds, opportunities, trades, llmConfig,
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
+        feedStatuses, feedsConnected,
       ];
 
   // ── JSON persistence ─────────────────────────────────────────────────────────

@@ -5,11 +5,9 @@ import '../../core/domain/enums.dart';
 import '../../core/domain/exchange.dart';
 import '../../core/domain/opportunity.dart';
 import '../../core/domain/strategy.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/utils/fmt.dart';
-import '../../core/utils/rng.dart';
 import '../../core/widgets/widgets.dart';
 
 /// Dashboard — live overview. See PRD §8.1 and DESIGN.md §12.1.
@@ -37,7 +35,7 @@ class DashboardScreen extends StatelessWidget {
                 children: [
                   Padding(
                     padding: AppPaddings.screenH,
-                    child: _Header(title: 'Dashboard'),
+                    child: _Header(title: 'Dashboard', feedsConnected: state.feedsConnected),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   TickerStrip(items: tickerItems),
@@ -54,7 +52,7 @@ class DashboardScreen extends StatelessWidget {
                           totalPnl: state.totalPnl,
                         ),
                         const SizedBox(height: AppSpacing.section),
-                        _SectionHeader(title: 'Active Strategies', trailing: activeStrategies.length > 0 ? null : null),
+                        _SectionHeader(title: 'Active Strategies'),
                         const SizedBox(height: AppSpacing.md),
                         if (activeStrategies.isEmpty)
                           ArbitronCard(child: Text('No active strategies. Enable one in the Strategies tab.', style: theme.textTheme.bodyMedium!.copyWith(color: theme.textSecondary)))
@@ -67,7 +65,7 @@ class DashboardScreen extends StatelessWidget {
                         const SizedBox(height: AppSpacing.section),
                         _SectionHeader(title: 'Market Health'),
                         const SizedBox(height: AppSpacing.md),
-                        _MarketHealth(exchangeIds: state.enabledExchangeIds),
+                        _MarketHealth(exchangeIds: state.enabledExchangeIds, feedStatuses: state.feedStatuses),
                       ],
                     ),
                   ),
@@ -83,23 +81,27 @@ class DashboardScreen extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final String title;
-  const _Header({required this.title});
+  final bool feedsConnected;
+  const _Header({required this.title, required this.feedsConnected});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final color = feedsConnected ? theme.accent : theme.warning;
+    final bgColor = feedsConnected ? theme.accentDim : theme.warningDim;
+    final label = feedsConnected ? 'Live' : 'Connecting';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: theme.textTheme.displayMedium!.copyWith(fontWeight: FontWeight.w700)),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(color: theme.accentDim, borderRadius: BorderRadius.circular(999)),
+          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(999)),
           child: Row(
             children: [
-              Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
+              Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
               const SizedBox(width: 6),
-              Text('Live', style: theme.textTheme.labelMedium!.copyWith(color: theme.accent, fontWeight: FontWeight.w700)),
+              Text(label, style: theme.textTheme.labelMedium!.copyWith(color: color, fontWeight: FontWeight.w700)),
             ],
           ),
         ),
@@ -274,7 +276,8 @@ class _AiActivityFeed extends StatelessWidget {
 
 class _MarketHealth extends StatelessWidget {
   final List<String> exchangeIds;
-  const _MarketHealth({required this.exchangeIds});
+  final Map<String, String> feedStatuses;
+  const _MarketHealth({required this.exchangeIds, required this.feedStatuses});
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +289,8 @@ class _MarketHealth extends StatelessWidget {
     return ArbitronCard(
       child: Column(
         children: exchanges.map((e) {
+          final status = feedStatuses[e.id] ?? 'disconnected';
+          final (dotColor, label) = _statusVisual(status, theme);
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
@@ -293,16 +298,27 @@ class _MarketHealth extends StatelessWidget {
                 ExchangeAvatar(name: e.name, size: 28),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(child: Text(e.name, style: theme.textTheme.bodyMedium!.copyWith(fontWeight: FontWeight.w500))),
-                Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
+                Container(width: 6, height: 6, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
-                Text('connected', style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
-                const SizedBox(width: AppSpacing.md),
-                Text('${Rng.nextInt(min: 18, max: 64)}ms', style: theme.textTheme.labelSmall!.copyWith(color: theme.textSecondary, fontFeatures: const [FontFeature.tabularFigures()])),
+                Text(label, style: theme.textTheme.labelSmall!.copyWith(color: theme.textMuted)),
               ],
             ),
           );
         }).toList(),
       ),
     );
+  }
+
+  (Color, String) _statusVisual(String status, ThemeData theme) {
+    switch (status) {
+      case 'connected':
+        return (theme.accent, 'connected');
+      case 'connecting':
+        return (theme.warning, 'connecting');
+      case 'error':
+        return (theme.danger, 'error');
+      default:
+        return (theme.textMuted, 'disconnected');
+    }
   }
 }

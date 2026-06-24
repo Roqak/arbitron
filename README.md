@@ -12,15 +12,15 @@ analyze, score, and (optionally) execute trades within user-defined risk limits.
 
 ## Status
 
-| Area | MVP (v1.0) |
-|------|-----------|
-| CEX support | Catalog of 10 exchanges, 3 enabled by default |
-| DEX support | Catalog of 10 DEXs (config UI only in MVP) |
+| Area | v1.5.0 |
+|------|--------|
+| CEX support | **Live WebSocket feeds**: Binance, Coinbase, Kraken, OKX, Bybit |
+| DEX support | Catalog of 10 DEXs (config UI only; live feeds in v2.0) |
 | Strategies | 3 seeded strategies, full editor, 5 strategy types |
 | Execution modes | Manual, Semi-Auto, Autonomous (with Kill Switch) |
-| LLM integration | Config screen (OpenAI-compatible), analysis rendering |
+| Opportunity scanner | **Live cross-exchange spread detection** net of fees + slippage |
+| LLM integration | Config screen (OpenAI-compatible); live analysis calls in v2.0 |
 | Persistence | HydratedBloc (strategies, trades, LLM config, theme) |
-| Live feeds | ⏳ v1.5 (currently demo data) |
 
 ## Project structure
 
@@ -29,16 +29,16 @@ Feature-first Clean Architecture:
 ```
 lib/
   core/
-    data/         demo data service (replaced by live feeds in v1.5)
-    domain/       enums, exchange catalog, strategy, opportunity, trade, llm_config
+    data/         live price feeds (WebSocket), opportunity scanner, demo fallback
+    domain/       ticker, exchange catalog, strategy, opportunity, trade, llm_config
     theme/        design tokens: colors, spacing, typography, theme
     widgets/      shared components (ArbitronCard, OpportunityCard, AiAnalysisBlock…)
     utils/        formatters, RNG
-    app_cubit.dart    global HydratedBloc state
+    app_cubit.dart    global HydratedBloc state + live feed lifecycle
     app_state.dart
   features/
-    dashboard/        live overview, ticker strip, portfolio, AI feed
-    opportunities/    list + filters + detail sheet + execute
+    dashboard/        live overview, ticker strip, portfolio, AI feed, market health
+    opportunities/    live opportunity list + filters + detail sheet + execute
     strategies/       list + editor (mode, risk, LLM instructions)
     history/          audit log + trade detail + AI debrief
     settings/         LLM config, exchanges, risk cap, theme, notifications
@@ -71,8 +71,8 @@ flutter analyze
 
 ## Roadmap
 
-See `PRD.md §12` for the full phased roadmap. v1.5 adds live DEX support,
-Autonomous mode + Kill Switch wiring, and real LLM analysis.
+See `PRD.md §12` for the full phased roadmap. v2.0 adds live LLM analysis
+calls, all remaining CEX/DEX feeds, and flash loan support.
 
 ---
 
