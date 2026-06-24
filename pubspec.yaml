@@ -1,7 +1,7 @@
 name: arbitron
 description: "AI-Powered Crypto Arbitrage Platform"
 publish_to: 'none'
-version: 2.5.3+6
+version: 2.5.4+7
 
 environment:
   sdk: '>=3.4.4 <4.0.0'

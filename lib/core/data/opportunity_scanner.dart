@@ -3,6 +3,7 @@ import '../domain/ticker.dart';
 import '../domain/opportunity.dart';
 import '../domain/exchange.dart';
 import '../domain/enums.dart';
+import '../domain/bridge.dart';
 import 'price_feed_service.dart';
 
 /// Scans live price snapshots for cross-exchange arbitrage opportunities.
@@ -85,7 +86,19 @@ class OpportunityScanner {
     final slippageUsd = sizeUsd * 0.001 + (qty * sellPrice) * 0.001;
 
     final grossProfit = (sellPrice - buyPrice) * qty;
-    final netProfit = grossProfit - feesUsd - slippageUsd;
+    // Cross-chain bridge cost (v2.5): if buy and sell exchanges are on
+    // different chains, factor in the cheapest bridge route.
+    String? bridgeName;
+    double? bridgeCostUsd;
+    Duration? bridgeTime;
+    var netProfit = grossProfit - feesUsd - slippageUsd;
+    final bridge = _maybeBridge(buyEx, sellEx, sizeUsd);
+    if (bridge != null) {
+      bridgeName = bridge.name;
+      bridgeCostUsd = bridge.costFor(sizeUsd);
+      bridgeTime = bridge.estimatedTime;
+      netProfit -= bridgeCostUsd;
+    }
     final netProfitPct = sizeUsd > 0 ? (netProfit / sizeUsd) * 100 : 0.0;
 
     // Confidence score: higher spread and more exchanges quoting = higher score.
@@ -106,9 +119,29 @@ class OpportunityScanner {
       confidenceScore: score,
       strategy: StrategyType.simpleCrossExchange,
       detectedAt: DateTime.now(),
-      analysisText: _generateAnalysis(pair, buyEx.name, sellEx.name, grossSpreadPct, netProfit, score),
+      analysisText: _generateAnalysis(pair, buyEx.name, sellEx.name, grossSpreadPct, netProfit, score, bridgeName, bridgeTime),
       isLive: true,
+      bridgeName: bridgeName,
+      bridgeCostUsd: bridgeCostUsd,
+      bridgeTime: bridgeTime,
     );
+  }
+
+  /// Returns the cheapest bridge route if the two exchanges are on different
+  /// chains, else null. Uses the exchange's region field as a chain proxy.
+  BridgeRoute? _maybeBridge(Exchange buyEx, Exchange sellEx, double sizeUsd) {
+    if (buyEx.kind != ExchangeKind.dex && sellEx.kind != ExchangeKind.dex) return null;
+    final fromChain = _chainOf(buyEx);
+    final toChain = _chainOf(sellEx);
+    if (fromChain == toChain) return null;
+    return BridgeCatalog.cheapest(fromChain, toChain, amountUsd: sizeUsd);
+  }
+
+  /// Maps an exchange to its native chain (for DEX) or "Ethereum" (for CEX,
+  /// since CEX deposits are assumed on the main chain).
+  String _chainOf(Exchange e) {
+    if (e.kind == ExchangeKind.cex) return 'Ethereum';
+    return e.region.split('/').first.split(' ').first;
   }
 
   int _scoreOpportunity(double grossSpreadPct, int exchangeCount, double netProfit) {
@@ -122,10 +155,13 @@ class OpportunityScanner {
     return score.clamp(0, 100);
   }
 
-  String _generateAnalysis(String pair, String buyName, String sellName, double spread, double netProfit, int score) {
+  String _generateAnalysis(String pair, String buyName, String sellName, double spread, double netProfit, int score, [String? bridgeName, Duration? bridgeTime]) {
     final verdict = score >= 75 ? 'a strong candidate' : score >= 50 ? 'worth monitoring' : 'marginal after costs';
+    final bridgeNote = bridgeName != null && bridgeTime != null
+        ? ' Requires $bridgeName bridge (~${bridgeTime.inMinutes}min).'
+        : '';
     return 'Live spread on $pair: buy on $buyName (lowest ask), sell on $sellName (highest bid). '
-        'Gross spread ${spread.toStringAsFixed(2)}%. Net of fees and slippage the opportunity is $verdict for execution.';
+        'Gross spread ${spread.toStringAsFixed(2)}%. Net of fees, slippage, and bridge costs the opportunity is $verdict for execution.$bridgeNote';
   }
 
   void dispose() {

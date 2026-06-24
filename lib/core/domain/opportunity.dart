@@ -19,6 +19,10 @@ class Opportunity extends Equatable {
   final DateTime detectedAt;
   final String analysisText;
   final bool isLive;
+  // Cross-chain bridge fields (v2.5). Null when no bridge is needed.
+  final String? bridgeName;
+  final double? bridgeCostUsd;
+  final Duration? bridgeTime;
 
   const Opportunity({
     required this.id,
@@ -37,7 +41,13 @@ class Opportunity extends Equatable {
     required this.detectedAt,
     this.analysisText = '',
     this.isLive = true,
+    this.bridgeName,
+    this.bridgeCostUsd,
+    this.bridgeTime,
   });
+
+  /// Whether this opportunity requires a cross-chain bridge.
+  bool get requiresBridge => bridgeName != null;
 
   @override
   List<Object?> get props => [id];

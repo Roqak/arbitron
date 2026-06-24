@@ -206,6 +206,11 @@ class _OpportunityDetailSheet extends StatelessWidget {
                     _DetailRow(label: 'Gross spread', value: Fmt.pctRaw(o.grossSpreadPct)),
                     _DetailRow(label: 'Est. fees', value: Fmt.usd(o.estFeesUsd)),
                     _DetailRow(label: 'Est. slippage', value: Fmt.usd(o.estSlippageUsd)),
+                    if (o.requiresBridge) ...[
+                      _DetailRow(label: 'Bridge', value: o.bridgeName ?? ''),
+                      _DetailRow(label: 'Bridge cost', value: Fmt.usd(o.bridgeCostUsd ?? 0)),
+                      _DetailRow(label: 'Bridge time', value: o.bridgeTime != null ? '~${o.bridgeTime!.inMinutes}min' : ''),
+                    ],
                     _DetailRow(label: 'Confidence', value: '${o.confidenceScore}/100'),
                     _DetailRow(label: 'Strategy', value: o.strategy.label),
                     _DetailRow(label: 'Detected', value: Fmt.dateTime(o.detectedAt)),
