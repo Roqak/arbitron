@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../core/data/backtest_engine.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../core/app_cubit.dart';
 import '../../core/domain/backtest.dart';
 import '../../core/domain/strategy.dart';
 import '../../core/theme/app_theme.dart';
@@ -33,9 +34,8 @@ class _BacktestSheetState extends State<BacktestSheet> {
 
   Future<void> _runBacktest() async {
     setState(() => _running = true);
-    // Simulate compute time for UX; the engine is synchronous.
     await Future.delayed(const Duration(milliseconds: 400));
-    final result = BacktestEngine.run(strategy: widget.strategy, days: _days, startingCapital: _capital);
+    final result = context.read<AppCubit>().runBacktest(strategy: widget.strategy, days: _days, startingCapital: _capital);
     if (mounted) setState(() { _result = result; _running = false; });
   }
 

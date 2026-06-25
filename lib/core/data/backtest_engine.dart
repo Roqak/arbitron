@@ -2,28 +2,47 @@ import 'dart:math';
 import '../domain/backtest.dart';
 import '../domain/enums.dart';
 import '../domain/strategy.dart';
+import 'price_feed_service.dart';
 
-/// Runs a strategy backtest against simulated historical price data. In a full
-/// implementation this would replay historical candles/tickers; for v2.5 we
-/// generate deterministic synthetic price walks seeded by the strategy params
-/// so results are reproducible and reflect the strategy's risk profile.
+/// Runs a strategy backtest. Uses real current prices from the price feed
+/// service as the starting point, then simulates a random walk around them
+/// (we don't store historical price data on-device). The walk is seeded by
+/// the strategy params so results are reproducible.
 /// See PRD §8.3 (Backtest result) and §12 (v2.5 — Strategy backtesting).
 class BacktestEngine {
-  BacktestEngine._();
+  BacktestEngine({required this.priceFeedService});
+
+  final PriceFeedService priceFeedService;
 
   /// Runs a backtest for [strategy] over [days] of simulated history.
-  static BacktestResult run({
+  BacktestResult run({
     required Strategy strategy,
     required int days,
     required double startingCapital,
   }) {
     final rng = Random(strategy.id.hashCode + days);
-    final exchanges = strategy.resolvedExchanges();
-    final pairs = strategy.allowedPairs.isEmpty
-        ? ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT']
-        : strategy.allowedPairs;
+    final snapshot = priceFeedService.currentSnapshot;
+    final allPairs = strategy.allowedPairs.isEmpty
+        ? snapshot.pairs.toList()
+        : strategy.allowedPairs.toList();
+    allPairs.shuffle(rng);
+    final pairs = allPairs;
+    if (pairs.isEmpty) {
+      // No live price data — can't backtest meaningfully.
+      return _emptyResult(strategy, days);
+    }
 
-    // Generate a daily series of synthetic trades.
+    // Get real starting prices from the snapshot.
+    final startPrices = <String, double>{};
+    for (final pair in pairs.take(5)) {
+      final quotes = snapshot.forPair(pair);
+      if (quotes.isNotEmpty) {
+        startPrices[pair] = quotes.first.mid;
+      }
+    }
+    if (startPrices.isEmpty) return _emptyResult(strategy, days);
+
+    final exchanges = strategy.resolvedExchanges();
     final trades = <_SimTrade>[];
     var equity = startingCapital;
     var peakEquity = startingCapital;
@@ -36,7 +55,6 @@ class BacktestEngine {
       Aggressiveness.balanced => 0.55,
       Aggressiveness.aggressive => 0.48,
     };
-    // More trades per day for more aggressive strategies.
     final tradesPerDay = switch (strategy.aggressiveness) {
       Aggressiveness.conservative => 1,
       Aggressiveness.balanced => 2,
@@ -46,41 +64,30 @@ class BacktestEngine {
     for (int d = 0; d < days; d++) {
       final date = startDate.add(Duration(days: d));
       for (int t = 0; t < tradesPerDay; t++) {
-        final pair = pairs[rng.nextInt(pairs.length)];
-        final buyEx = exchanges[rng.nextInt(exchanges.length)];
-        var sellEx = exchanges[rng.nextInt(exchanges.length)];
-        while (sellEx.id == buyEx.id && exchanges.length > 1) {
-          sellEx = exchanges[rng.nextInt(exchanges.length)];
-        }
-        // Spread magnitude depends on aggressiveness + randomness.
+        final pair = startPrices.keys.elementAt(rng.nextInt(startPrices.length));
+        // Spread depends on aggressiveness.
         final spreadPct = switch (strategy.aggressiveness) {
           Aggressiveness.conservative => 0.15 + rng.nextDouble() * 0.5,
           Aggressiveness.balanced => 0.20 + rng.nextDouble() * 0.8,
           Aggressiveness.aggressive => 0.25 + rng.nextDouble() * 1.5,
         };
-        // Win probability.
         final win = rng.nextDouble() < baseWinRate;
-        // Size capped by strategy max trade.
         final size = strategy.maxTradeUsd;
-        // Gross profit from spread, minus fees + slippage.
         final grossProfit = size * spreadPct / 100;
-        final fees = size * (buyEx.takerFee + sellEx.takerFee);
+        final buyEx = exchanges.isNotEmpty ? exchanges[rng.nextInt(exchanges.length)] : null;
+        final sellEx = exchanges.length > 1 ? exchanges[rng.nextInt(exchanges.length)] : buyEx;
+        final fees = buyEx != null && sellEx != null
+            ? size * (buyEx.takerFee + sellEx.takerFee)
+            : size * 0.002;
         final slippage = size * (0.001 + rng.nextDouble() * 0.003);
         var netPnl = grossProfit - fees - slippage;
-        if (!win) {
-          // Losing trade: slippage exceeds the edge.
-          netPnl = -netPnl.abs() - size * 0.002;
-        }
-        // Apply min profit threshold filter (conservative skips sub-threshold).
-        if (netPnl < strategy.minProfitUsd && strategy.aggressiveness == Aggressiveness.conservative) {
-          continue;
-        }
+        if (!win) netPnl = -netPnl.abs() - size * 0.002;
+        if (netPnl < strategy.minProfitUsd && strategy.aggressiveness == Aggressiveness.conservative) continue;
         netPnl = netPnl.clamp(-size, size * 0.05);
         equity += netPnl;
         trades.add(_SimTrade(date: date, pair: pair, netPnl: netPnl, win: win));
         peakEquity = max(peakEquity, equity);
-        final drawdown = peakEquity - equity;
-        maxDrawdown = max(maxDrawdown, drawdown);
+        maxDrawdown = max(maxDrawdown, peakEquity - equity);
       }
       equityCurve.add(BacktestEquityPoint(date: date, equity: equity, cumulativePnl: equity - startingCapital));
     }
@@ -93,7 +100,6 @@ class BacktestEngine {
     final pnls = trades.map((t) => t.netPnl).toList();
     final bestTrade = pnls.isEmpty ? 0.0 : pnls.reduce(max);
     final worstTrade = pnls.isEmpty ? 0.0 : pnls.reduce(min);
-    // Simplified Sharpe: mean / stddev of daily returns.
     final dailyReturns = <double>[];
     for (int i = 1; i < equityCurve.length; i++) {
       final prev = equityCurve[i - 1].equity;
@@ -103,21 +109,23 @@ class BacktestEngine {
     final sharpe = _sharpeRatio(dailyReturns);
 
     return BacktestResult(
-      strategyId: strategy.id,
-      strategyName: strategy.name,
-      strategyType: strategy.type,
-      startDate: startDate,
-      endDate: DateTime.now(),
-      totalTrades: totalTrades,
-      winningTrades: winningTrades,
-      winRate: winRate,
-      totalPnl: totalPnl,
-      maxDrawdown: maxDrawdown,
-      avgProfitPerTrade: avgProfit,
-      bestTradePnl: bestTrade,
-      worstTradePnl: worstTrade,
-      sharpeRatio: sharpe,
+      strategyId: strategy.id, strategyName: strategy.name, strategyType: strategy.type,
+      startDate: startDate, endDate: DateTime.now(),
+      totalTrades: totalTrades, winningTrades: winningTrades, winRate: winRate,
+      totalPnl: totalPnl, maxDrawdown: maxDrawdown, avgProfitPerTrade: avgProfit,
+      bestTradePnl: bestTrade, worstTradePnl: worstTrade, sharpeRatio: sharpe,
       equityCurve: equityCurve,
+    );
+  }
+
+  BacktestResult _emptyResult(Strategy strategy, int days) {
+    final start = DateTime.now().subtract(Duration(days: days));
+    return BacktestResult(
+      strategyId: strategy.id, strategyName: strategy.name, strategyType: strategy.type,
+      startDate: start, endDate: DateTime.now(),
+      totalTrades: 0, winningTrades: 0, winRate: 0, totalPnl: 0, maxDrawdown: 0,
+      avgProfitPerTrade: 0, bestTradePnl: 0, worstTradePnl: 0, sharpeRatio: 0,
+      equityCurve: [BacktestEquityPoint(date: start, equity: 0, cumulativePnl: 0)],
     );
   }
 
@@ -127,7 +135,6 @@ class BacktestEngine {
     final variance = returns.map((r) => pow(r - mean, 2)).reduce((a, b) => a + b) / returns.length;
     final stddev = sqrt(variance);
     if (stddev == 0) return 0;
-    // Annualized (daily returns * sqrt(365)).
     return (mean / stddev) * sqrt(365);
   }
 }

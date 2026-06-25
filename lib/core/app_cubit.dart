@@ -9,15 +9,16 @@ import 'domain/opportunity.dart';
 import 'domain/strategy.dart';
 import 'domain/trade.dart';
 import 'domain/custom_strategy.dart';
-import 'data/demo_data_service.dart';
 import 'data/price_feed_service.dart';
 import 'data/price_feed.dart';
 import 'data/opportunity_scanner.dart';
+import 'data/backtest_engine.dart';
 import 'data/secure_key_store.dart';
 import 'data/llm_service.dart';
 import 'data/api_server.dart';
 import 'data/trading_service.dart';
 import 'domain/credentials.dart';
+import 'domain/backtest.dart';
 
 part 'app_state.dart';
 
@@ -40,9 +41,10 @@ class AppCubit extends HydratedCubit<AppState> {
 
   late final PriceFeedService _priceFeedService = PriceFeedService();
   late final OpportunityScanner _scanner = OpportunityScanner(priceFeedService: _priceFeedService);
+  late final BacktestEngine _backtestEngine = BacktestEngine(priceFeedService: _priceFeedService);
   late final SecureKeyStore _keyStore = SecureKeyStore();
   late final LlmService _llm = LlmService(keyStore: _keyStore);
-  late final TradingService _trading = TradingService(keyStore: _keyStore);
+  late final TradingService _trading = TradingService(keyStore: _keyStore, priceFeedService: _priceFeedService);
   ApiServer? _apiServer;
 
   bool get apiRunning => _apiServer?.isRunning ?? false;
@@ -74,11 +76,7 @@ class AppCubit extends HydratedCubit<AppState> {
   void _initLiveFeeds() {
     // Sync trade history to the LLM service for in-context fine-tuning (v2.5).
     _llm.tradeHistory = state.trades;
-    // Seed demo opportunities so the UI has content while feeds connect.
-    emit(state.copyWith(
-      opportunities: DemoDataService.opportunities(count: 14),
-      lastUpdated: DateTime.now(),
-    ));
+    // Opportunities start empty — filled by the live scanner only.
 
     _statusSub = _priceFeedService.statusChanges.listen(_onFeedStatus);
     _oppSub = _scanner.opportunities.listen(_onOpportunities);
@@ -237,10 +235,8 @@ class AppCubit extends HydratedCubit<AppState> {
 
   // ── Opportunities ──────────────────────────────────────────────────────────
   void refreshOpportunities() {
-    emit(state.copyWith(
-      opportunities: DemoDataService.opportunities(count: 14),
-      lastUpdated: DateTime.now(),
-    ));
+    // Clear stale opportunities — the scanner will repopulate from live feeds.
+    emit(state.copyWith(opportunities: const [], lastUpdated: DateTime.now()));
     if (!_feedsStarted) _restartFeeds();
   }
 
@@ -377,6 +373,11 @@ class AppCubit extends HydratedCubit<AppState> {
   Future<bool> hasExchangeCredentials(String exchangeId) => _trading.hasCredentials(exchangeId);
 
   Future<Set<String>> connectedTradingExchanges() => _trading.connectedTradingExchanges();
+
+  /// Runs a strategy backtest using real current prices from the live feed.
+  BacktestResult runBacktest({required Strategy strategy, required int days, required double startingCapital}) {
+    return _backtestEngine.run(strategy: strategy, days: days, startingCapital: startingCapital);
+  }
 
   @override
   AppState? fromJson(Map<String, dynamic> json) => AppState.fromJson(json);

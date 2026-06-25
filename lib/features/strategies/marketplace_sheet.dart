@@ -40,7 +40,10 @@ class MarketplaceSheet extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Text('Browse and install community strategies. Preview backtest stats before installing.', style: theme.textTheme.bodySmall!.copyWith(color: theme.textMuted)),
               const SizedBox(height: AppSpacing.xl),
-              ...MarketplaceCatalog.all.map((s) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _MarketplaceCard(strategy: s))),
+              if (MarketplaceCatalog.all.isEmpty)
+                const EmptyState(icon: Icons.storefront_outlined, title: 'Marketplace coming soon', body: 'Community strategies will appear here when the marketplace backend is available.')
+              else
+                ...MarketplaceCatalog.all.map((s) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.md), child: _MarketplaceCard(strategy: s))),
             ],
           ),
         );

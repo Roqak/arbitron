@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'exchange_trading_client.dart';
 import 'secure_key_store.dart';
+import 'price_feed_service.dart';
 import '../domain/opportunity.dart';
 import '../domain/trade.dart';
 import '../domain/enums.dart';
@@ -11,9 +12,10 @@ import '../domain/credentials.dart';
 /// fetching, two-leg arbitrage execution (buy + sell), and fill tracking.
 /// See PRD §6 (Execution Modes) and §10.
 class TradingService {
-  TradingService({required this.keyStore});
+  TradingService({required this.keyStore, this.priceFeedService});
 
   final SecureKeyStore keyStore;
+  final PriceFeedService? priceFeedService;
   final Map<String, ExchangeTradingClient> _clients = {};
 
   ExchangeTradingClient? _client(String exchangeId) {
@@ -41,21 +43,26 @@ class TradingService {
   }
 
   /// Computes total portfolio value in USD across all connected exchanges.
-  /// Uses rough price estimates for non-USD assets. For a full implementation
-  /// this would use live price feeds for conversion.
+  /// Converts non-USD assets using live mid prices from the price feed service.
   Future<double> fetchPortfolioValueUsd() async {
     final allBalances = await fetchAllBalances();
     var total = 0.0;
+    final snapshot = priceFeedService?.currentSnapshot;
     for (final balances in allBalances.values) {
       for (final b in balances) {
-        // Stablecoins are ~$1. For others, we'd convert via live price.
         if (b.asset == 'USD' || b.asset == 'USDT' || b.asset == 'USDC' || b.asset == 'BUSD') {
           total += b.total;
-        } else {
-          // For non-stablecoin assets, estimate via the ticker if available.
-          // For now, use 0 as placeholder — real conversion requires price data.
-          // This will be improved when we wire in live price feeds.
-          total += 0.0;
+        } else if (snapshot != null) {
+          // Try to find a live price for this asset against USDT.
+          final quotes = snapshot.forPair('${b.asset}/USDT');
+          if (quotes.isNotEmpty) {
+            total += b.total * quotes.first.mid;
+          } else if (b.asset == 'BTC') {
+            // Fallback: try BTC/USDC
+            final alt = snapshot.forPair('${b.asset}/USDC');
+            if (alt.isNotEmpty) total += b.total * alt.first.mid;
+          }
+          // If no price found, asset contributes 0 (can't value without a price)
         }
       }
     }

@@ -75,10 +75,7 @@ class _LeaderboardSheetState extends State<LeaderboardSheet> {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              // Top 3 podium
-              if (entries.length >= 3) _Podium(top3: entries.take(3).toList()),
-              const SizedBox(height: AppSpacing.lg),
-              // Full list
+              // No podium without a backend — just show the user's entry.
               ...entries.map((e) => _LeaderboardRow(entry: e)),
             ],
           ),

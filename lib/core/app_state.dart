@@ -48,13 +48,11 @@ class AppState extends Equatable {
   });
 
   factory AppState.initial() {
-    final strategies = DemoDataService.defaultStrategies();
-    final opps = DemoDataService.opportunities(count: 14);
     return AppState(
-      strategies: strategies,
+      strategies: _defaultStrategies,
       enabledExchangeIds: const ['binance', 'coinbase', 'kraken'],
-      opportunities: opps,
-      trades: const [], // no demo trades — real trades only
+      opportunities: const [], // empty — filled by live scanner only
+      trades: const [], // empty — filled by real executions only
       llmConfig: const LlmConfig(),
       autonomousPaused: false,
       dailyLossCapUsd: 250,
@@ -62,6 +60,14 @@ class AppState extends Equatable {
       lastUpdated: DateTime.now(),
     );
   }
+
+  /// Default strategies shipped with the app — all with zero stats. Stats
+  /// are computed from real trades, not seeded.
+  static const _defaultStrategies = [
+    Strategy(id: 'strat_simple_1', name: 'Simple Cross-Exchange', type: StrategyType.simpleCrossExchange, enabled: true, mode: ExecutionMode.manual, minProfitUsd: 15, maxTradeUsd: 2000, allowedExchangeIds: ['binance', 'coinbase', 'kraken', 'okx', 'bybit']),
+    Strategy(id: 'strat_tri_1', name: 'Triangular BTC/ETH/USDT', type: StrategyType.triangular, enabled: false, mode: ExecutionMode.semiAuto, minProfitUsd: 8, maxTradeUsd: 1500, allowedExchangeIds: ['binance']),
+    Strategy(id: 'strat_dexcex_1', name: 'DEX-CEX ETH', type: StrategyType.dexCex, enabled: false, mode: ExecutionMode.autonomous, minProfitUsd: 25, maxTradeUsd: 3000, allowedExchangeIds: ['jupiter', 'binance']),
+  ];
 
   AppState copyWith({
     List<Strategy>? strategies,
