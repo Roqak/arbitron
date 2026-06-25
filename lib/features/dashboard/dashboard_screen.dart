@@ -17,7 +17,17 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return BlocBuilder<AppCubit, AppState>(
-      buildWhen: (a, b) => a.opportunities != b.opportunities || a.trades != b.trades || a.strategies != b.strategies || a.feedsConnected != b.feedsConnected || a.llmConfigured != b.llmConfigured || a.feedStatuses != b.feedStatuses || a.lastDailySummary != b.lastDailySummary,
+      buildWhen: (a, b) =>
+          a.opportunities != b.opportunities ||
+          a.trades != b.trades ||
+          a.strategies != b.strategies ||
+          a.feedsConnected != b.feedsConnected ||
+          a.llmConfigured != b.llmConfigured ||
+          a.feedStatuses != b.feedStatuses ||
+          a.lastDailySummary != b.lastDailySummary ||
+          a.portfolioLoading != b.portfolioLoading ||
+          a.llmError != b.llmError ||
+          a.tradeError != b.tradeError,
       builder: (context, state) {
         final topOpps = state.opportunities.take(8).toList();
         final activeStrategies = state.strategies.where((s) => s.enabled).toList();
@@ -32,11 +42,14 @@ class DashboardScreen extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.md, AppSpacing.screenH, AppSpacing.xxxl + 56),
                 children: [
+                  // Error banner
+                  if (state.tradeError != null || state.llmError != null)
+                    _ErrorBanner(tradeError: state.tradeError, llmError: state.llmError),
                   // Header with live status
                   _Header(feedsConnected: state.feedsConnected, llmConfigured: state.llmConfigured),
                   const SizedBox(height: AppSpacing.lg),
                   // Portfolio — no card, just typographic hierarchy
-                  _Portfolio(valueUsd: state.portfolioValue, todayPnl: state.todayPnl, totalPnl: state.totalPnl),
+                  _Portfolio(valueUsd: state.portfolioValue, todayPnl: state.todayPnl, totalPnl: state.totalPnl, loading: state.portfolioLoading),
                   const SizedBox(height: AppSpacing.section),
                   // Ticker strip
                   TickerStrip(opportunities: topOpps),
@@ -107,7 +120,8 @@ class _Header extends StatelessWidget {
 
 class _Portfolio extends StatelessWidget {
   final double valueUsd, todayPnl, totalPnl;
-  const _Portfolio({required this.valueUsd, required this.todayPnl, required this.totalPnl});
+  final bool loading;
+  const _Portfolio({required this.valueUsd, required this.todayPnl, required this.totalPnl, this.loading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +131,13 @@ class _Portfolio extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        MonoText('PORTFOLIO', size: 10, weight: FontWeight.w600, color: theme.textMuted),
+        Row(children: [
+          MonoText('PORTFOLIO', size: 10, weight: FontWeight.w600, color: theme.textMuted),
+          if (loading) ...[
+            const SizedBox(width: 8),
+            SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: theme.textMuted)),
+          ],
+        ]),
         const SizedBox(height: 4),
         MonoText(Fmt.usd(valueUsd), size: 32, weight: FontWeight.w700, color: theme.textPrimary),
         const SizedBox(height: 4),
@@ -230,6 +250,35 @@ class _ExchangeStatusRow extends StatelessWidget {
           const SizedBox(width: 6),
           MonoText((status ?? 'disconnected').toUpperCase(), size: 10, weight: FontWeight.w600, color: color),
         ],
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  final String? tradeError;
+  final String? llmError;
+  const _ErrorBanner({this.tradeError, this.llmError});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final message = tradeError ?? llmError;
+    final isTrade = tradeError != null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: isTrade ? theme.danger.withOpacity(0.15) : theme.warning.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border.all(color: isTrade ? theme.danger.withOpacity(0.3) : theme.warning.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          Icon(isTrade ? Icons.error_outline : Icons.warning_amber_outlined, size: 16, color: isTrade ? theme.danger : theme.warning),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: Text(message!, style: theme.textTheme.bodySmall?.copyWith(color: isTrade ? theme.danger : theme.warning))),
+        ]),
       ),
     );
   }

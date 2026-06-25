@@ -92,20 +92,24 @@ class BinanceTradingClient implements ExchangeTradingClient {
 
   @override
   Future<List<Balance>> fetchBalances(ExchangeCredentials creds) async {
-    final params = <String, String>{'timestamp': _timestamp(), 'recvWindow': '10000'};
-    final signature = _sign(creds.apiSecret, params);
-    final response = await _dio.get('/api/v3/account', queryParameters: {
-      ...params, 'signature': signature,
-    }, options: Options(headers: {'X-MBX-APIKEY': creds.apiKey}));
-    if (response.statusCode != 200) throw Exception('Binance balance fetch failed: ${response.statusCode}');
-    final data = response.data as Map<String, dynamic>;
-    final balances = data['balances'] as List? ?? [];
-    return balances.map((b) {
-      final m = b as Map<String, dynamic>;
-      final free = double.tryParse(m['free']?.toString() ?? '0') ?? 0;
-      final locked = double.tryParse(m['locked']?.toString() ?? '0') ?? 0;
-      return Balance(asset: m['asset'] as String, free: free, locked: locked);
-    }).where((b) => b.total > 0).toList();
+    try {
+      final params = <String, String>{'timestamp': _timestamp(), 'recvWindow': '10000'};
+      final signature = _sign(creds.apiSecret, params);
+      final response = await _dio.get('/api/v3/account', queryParameters: {
+        ...params, 'signature': signature,
+      }, options: Options(headers: {'X-MBX-APIKEY': creds.apiKey}));
+      if (response.statusCode != 200) return [];
+      final data = response.data as Map<String, dynamic>;
+      final balances = data['balances'] as List? ?? [];
+      return balances.map((b) {
+        final m = b as Map<String, dynamic>;
+        final free = double.tryParse(m['free']?.toString() ?? '0') ?? 0;
+        final locked = double.tryParse(m['locked']?.toString() ?? '0') ?? 0;
+        return Balance(asset: m['asset'] as String, free: free, locked: locked);
+      }).where((b) => b.total > 0).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -157,18 +161,22 @@ class KrakenTradingClient implements ExchangeTradingClient {
 
   @override
   Future<List<Balance>> fetchBalances(ExchangeCredentials creds) async {
-    final nonce = _nonce();
-    final postData = 'nonce=$nonce';
-    final signature = _sign(creds.apiSecret, '/0/private/Balance', nonce, postData);
-    final response = await _dio.post('/0/private/Balance', data: postData, options: Options(headers: {'API-Key': creds.apiKey, 'API-Sign': signature, 'Content-Type': 'application/x-www-form-urlencoded'}));
-    if (response.statusCode != 200) throw Exception('Kraken balance fetch failed');
-    final data = response.data as Map<String, dynamic>;
-    final result = data['result'] as Map<String, dynamic>? ?? {};
-    return result.entries.map((e) {
-      final asset = e.key.replaceAll('X', '').replaceAll('Z', '');
-      final balance = double.tryParse(e.value.toString()) ?? 0;
-      return Balance(asset: asset, free: balance, locked: 0);
-    }).where((b) => b.total > 0).toList();
+    try {
+      final nonce = _nonce();
+      final postData = 'nonce=$nonce';
+      final signature = _sign(creds.apiSecret, '/0/private/Balance', nonce, postData);
+      final response = await _dio.post('/0/private/Balance', data: postData, options: Options(headers: {'API-Key': creds.apiKey, 'API-Sign': signature, 'Content-Type': 'application/x-www-form-urlencoded'}));
+      if (response.statusCode != 200) return [];
+      final data = response.data as Map<String, dynamic>;
+      final result = data['result'] as Map<String, dynamic>? ?? {};
+      return result.entries.map((e) {
+        final asset = e.key.replaceAll('X', '').replaceAll('Z', '');
+        final balance = double.tryParse(e.value.toString()) ?? 0;
+        return Balance(asset: asset, free: balance, locked: 0);
+      }).where((b) => b.total > 0).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -221,20 +229,24 @@ class OkxTradingClient implements ExchangeTradingClient {
 
   @override
   Future<List<Balance>> fetchBalances(ExchangeCredentials creds) async {
-    final ts = _timestamp();
-    final path = '/api/v5/account/balance';
-    final signature = _sign(creds.apiSecret, ts, 'GET', path, '');
-    final response = await _dio.get(path, options: Options(headers: {'OK-ACCESS-KEY': creds.apiKey, 'OK-ACCESS-SIGN': signature, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': creds.passphrase ?? ''}));
-    if (response.statusCode != 200) throw Exception('OKX balance fetch failed');
-    final data = response.data as Map<String, dynamic>;
-    final balanceData = (data['data'] as List?)?.first as Map<String, dynamic>?;
-    final details = balanceData?['details'] as List? ?? [];
-    return details.map((d) {
-      final m = d as Map<String, dynamic>;
-      final free = double.tryParse(m['availBal']?.toString() ?? '0') ?? 0;
-      final locked = double.tryParse(m['frozenBal']?.toString() ?? '0') ?? 0;
-      return Balance(asset: m['ccy'] as String, free: free, locked: locked);
-    }).where((b) => b.total > 0).toList();
+    try {
+      final ts = _timestamp();
+      final path = '/api/v5/account/balance';
+      final signature = _sign(creds.apiSecret, ts, 'GET', path, '');
+      final response = await _dio.get(path, options: Options(headers: {'OK-ACCESS-KEY': creds.apiKey, 'OK-ACCESS-SIGN': signature, 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': creds.passphrase ?? ''}));
+      if (response.statusCode != 200) return [];
+      final data = response.data as Map<String, dynamic>;
+      final balanceData = (data['data'] as List?)?.first as Map<String, dynamic>?;
+      final details = balanceData?['details'] as List? ?? [];
+      return details.map((d) {
+        final m = d as Map<String, dynamic>;
+        final free = double.tryParse(m['availBal']?.toString() ?? '0') ?? 0;
+        final locked = double.tryParse(m['frozenBal']?.toString() ?? '0') ?? 0;
+        return Balance(asset: m['ccy'] as String, free: free, locked: locked);
+      }).where((b) => b.total > 0).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -285,20 +297,24 @@ class BybitTradingClient implements ExchangeTradingClient {
 
   @override
   Future<List<Balance>> fetchBalances(ExchangeCredentials creds) async {
-    final ts = _timestamp();
-    final recvWindow = '10000';
-    final signature = _sign(creds.apiSecret, ts, creds.apiKey, recvWindow, '');
-    final response = await _dio.get('/v5/account/wallet/balance', queryParameters: {'accountType': 'UNIFIED'}, options: Options(headers: {'X-BAPI-API-KEY': creds.apiKey, 'X-BAPI-SIGN': signature, 'X-BAPI-SIGN-TYPE': '2', 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-RECV-WINDOW': recvWindow}));
-    if (response.statusCode != 200) throw Exception('Bybit balance fetch failed');
-    final data = response.data as Map<String, dynamic>;
-    final accounts = (data['result']?['list'] as List?)?.first as Map<String, dynamic>?;
-    final coins = accounts?['coin'] as List? ?? [];
-    return coins.map((c) {
-      final m = c as Map<String, dynamic>;
-      final free = double.tryParse(m['walletBalance']?.toString() ?? '0') ?? 0;
-      final locked = double.tryParse(m['locked']?.toString() ?? '0') ?? 0;
-      return Balance(asset: m['coin'] as String, free: free, locked: locked);
-    }).where((b) => b.total > 0).toList();
+    try {
+      final ts = _timestamp();
+      final recvWindow = '10000';
+      final signature = _sign(creds.apiSecret, ts, creds.apiKey, recvWindow, '');
+      final response = await _dio.get('/v5/account/wallet/balance', queryParameters: {'accountType': 'UNIFIED'}, options: Options(headers: {'X-BAPI-API-KEY': creds.apiKey, 'X-BAPI-SIGN': signature, 'X-BAPI-SIGN-TYPE': '2', 'X-BAPI-TIMESTAMP': ts, 'X-BAPI-RECV-WINDOW': recvWindow}));
+      if (response.statusCode != 200) return [];
+      final data = response.data as Map<String, dynamic>;
+      final accounts = (data['result']?['list'] as List?)?.first as Map<String, dynamic>?;
+      final coins = accounts?['coin'] as List? ?? [];
+      return coins.map((c) {
+        final m = c as Map<String, dynamic>;
+        final free = double.tryParse(m['walletBalance']?.toString() ?? '0') ?? 0;
+        final locked = double.tryParse(m['locked']?.toString() ?? '0') ?? 0;
+        return Balance(asset: m['coin'] as String, free: free, locked: locked);
+      }).where((b) => b.total > 0).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -345,19 +361,23 @@ class CoinbaseTradingClient implements ExchangeTradingClient {
 
   @override
   Future<List<Balance>> fetchBalances(ExchangeCredentials creds) async {
-    final ts = _timestamp();
-    final path = '/api/v3/brokerage/accounts';
-    final signature = _sign(creds.apiSecret, ts, 'GET', path, '');
-    final response = await _dio.get(path, options: Options(headers: {'CB-ACCESS-KEY': creds.apiKey, 'CB-ACCESS-SIGN': signature, 'CB-ACCESS-TIMESTAMP': ts}));
-    if (response.statusCode != 200) throw Exception('Coinbase balance fetch failed');
-    final data = response.data as Map<String, dynamic>;
-    final accounts = data['accounts'] as List? ?? [];
-    return accounts.map((a) {
-      final m = a as Map<String, dynamic>;
-      final available = double.tryParse(m['available_balance']?['value']?.toString() ?? '0') ?? 0;
-      final hold = double.tryParse(m['hold']?['value']?.toString() ?? '0') ?? 0;
-      return Balance(asset: m['currency'] as String, free: available, locked: hold);
-    }).where((b) => b.total > 0).toList();
+    try {
+      final ts = _timestamp();
+      final path = '/api/v3/brokerage/accounts';
+      final signature = _sign(creds.apiSecret, ts, 'GET', path, '');
+      final response = await _dio.get(path, options: Options(headers: {'CB-ACCESS-KEY': creds.apiKey, 'CB-ACCESS-SIGN': signature, 'CB-ACCESS-TIMESTAMP': ts}));
+      if (response.statusCode != 200) return [];
+      final data = response.data as Map<String, dynamic>;
+      final accounts = data['accounts'] as List? ?? [];
+      return accounts.map((a) {
+        final m = a as Map<String, dynamic>;
+        final available = double.tryParse(m['available_balance']?['value']?.toString() ?? '0') ?? 0;
+        final hold = double.tryParse(m['hold']?['value']?.toString() ?? '0') ?? 0;
+        return Balance(asset: m['currency'] as String, free: available, locked: hold);
+      }).where((b) => b.total > 0).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   @override

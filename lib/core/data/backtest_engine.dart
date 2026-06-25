@@ -20,27 +20,27 @@ class BacktestEngine {
     required int days,
     required double startingCapital,
   }) {
-    final rng = Random(strategy.id.hashCode + days);
-    final snapshot = priceFeedService.currentSnapshot;
-    final allPairs = strategy.allowedPairs.isEmpty
-        ? snapshot.pairs.toList()
-        : strategy.allowedPairs.toList();
-    allPairs.shuffle(rng);
-    final pairs = allPairs;
-    if (pairs.isEmpty) {
-      // No live price data — can't backtest meaningfully.
-      return _emptyResult(strategy, days);
-    }
-
-    // Get real starting prices from the snapshot.
-    final startPrices = <String, double>{};
-    for (final pair in pairs.take(5)) {
-      final quotes = snapshot.forPair(pair);
-      if (quotes.isNotEmpty) {
-        startPrices[pair] = quotes.first.mid;
+    try {
+      final rng = Random(strategy.id.hashCode + days);
+      final snapshot = priceFeedService.currentSnapshot;
+      final allPairs = strategy.allowedPairs.isEmpty
+          ? snapshot.pairs.toList()
+          : strategy.allowedPairs.toList();
+      allPairs.shuffle(rng);
+      final pairs = allPairs;
+      if (pairs.isEmpty) {
+        return _emptyResult(strategy, days, message: 'No price data available for backtesting');
       }
-    }
-    if (startPrices.isEmpty) return _emptyResult(strategy, days);
+
+      // Get real starting prices from the snapshot.
+      final startPrices = <String, double>{};
+      for (final pair in pairs.take(5)) {
+        final quotes = snapshot.forPair(pair);
+        if (quotes.isNotEmpty) {
+          startPrices[pair] = quotes.first.mid;
+        }
+      }
+      if (startPrices.isEmpty) return _emptyResult(strategy, days, message: 'No live prices for the selected pairs');
 
     final exchanges = strategy.resolvedExchanges();
     final trades = <_SimTrade>[];
@@ -108,17 +108,20 @@ class BacktestEngine {
     }
     final sharpe = _sharpeRatio(dailyReturns);
 
-    return BacktestResult(
-      strategyId: strategy.id, strategyName: strategy.name, strategyType: strategy.type,
-      startDate: startDate, endDate: DateTime.now(),
-      totalTrades: totalTrades, winningTrades: winningTrades, winRate: winRate,
-      totalPnl: totalPnl, maxDrawdown: maxDrawdown, avgProfitPerTrade: avgProfit,
-      bestTradePnl: bestTrade, worstTradePnl: worstTrade, sharpeRatio: sharpe,
-      equityCurve: equityCurve,
-    );
+      return BacktestResult(
+        strategyId: strategy.id, strategyName: strategy.name, strategyType: strategy.type,
+        startDate: startDate, endDate: DateTime.now(),
+        totalTrades: totalTrades, winningTrades: winningTrades, winRate: winRate,
+        totalPnl: totalPnl, maxDrawdown: maxDrawdown, avgProfitPerTrade: avgProfit,
+        bestTradePnl: bestTrade, worstTradePnl: worstTrade, sharpeRatio: sharpe,
+        equityCurve: equityCurve,
+      );
+    } catch (e) {
+      return _emptyResult(strategy, days, message: 'Backtest error: $e');
+    }
   }
 
-  BacktestResult _emptyResult(Strategy strategy, int days) {
+  BacktestResult _emptyResult(Strategy strategy, int days, {String message = ''}) {
     final start = DateTime.now().subtract(Duration(days: days));
     return BacktestResult(
       strategyId: strategy.id, strategyName: strategy.name, strategyType: strategy.type,

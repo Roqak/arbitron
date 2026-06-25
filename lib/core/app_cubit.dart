@@ -52,13 +52,20 @@ class AppCubit extends HydratedCubit<AppState> {
   String? get apiToken => _apiServer?.token;
 
   Future<void> startApiServer({int port = 8765, required String token}) async {
-    _apiServer = ApiServer(cubit: this);
-    await _apiServer!.start(port: port, token: token);
-    emit(state.copyWith(apiRunning: true, apiPort: port, apiToken: token));
+    try {
+      _apiServer = ApiServer(cubit: this);
+      await _apiServer!.start(port: port, token: token);
+      emit(state.copyWith(apiRunning: true, apiPort: port, apiToken: token));
+    } catch (e) {
+      _apiServer = null;
+      emit(state.copyWith(tradeError: 'API server failed to start: $e'));
+    }
   }
 
   Future<void> stopApiServer() async {
-    await _apiServer?.stop();
+    try {
+      await _apiServer?.stop();
+    } catch (_) {}
     _apiServer = null;
     emit(state.copyWith(apiRunning: false, apiPort: null, apiToken: null));
   }
@@ -132,46 +139,54 @@ class AppCubit extends HydratedCubit<AppState> {
   }
 
   Future<void> _analyzeOpportunity(Opportunity o) async {
-    final strategy = state.strategies.firstWhere(
-      (s) => s.type == o.strategy,
-      orElse: () => state.strategies.first,
-    );
-    final analysis = await _llm.analyzeOpportunity(
-      config: state.llmConfig,
-      opportunity: o,
-      strategy: strategy,
-      customInstructions: strategy.customInstructions,
-    );
-    _inFlight.remove(o.id);
-    if (analysis == null) return; // LLM failed; keep scanner-generated analysis
-    _analyzedOppIds.add(o.id);
+    try {
+      final strategy = state.strategies.firstWhere(
+        (s) => s.type == o.strategy,
+        orElse: () => state.strategies.first,
+      );
+      final analysis = await _llm.analyzeOpportunity(
+        config: state.llmConfig,
+        opportunity: o,
+        strategy: strategy,
+        customInstructions: strategy.customInstructions,
+      );
+      _inFlight.remove(o.id);
+      if (analysis == null) {
+        emit(state.copyWith(llmError: 'LLM analysis returned no result for ${o.pair}'));
+        return;
+      }
+      _analyzedOppIds.add(o.id);
 
-    // Enrich the opportunity with the LLM analysis text + score.
-    final enriched = Opportunity(
-      id: o.id,
-      pair: o.pair,
-      buyExchangeId: o.buyExchangeId,
-      sellExchangeId: o.sellExchangeId,
-      buyPrice: o.buyPrice,
-      sellPrice: o.sellPrice,
-      grossSpreadPct: o.grossSpreadPct,
-      estFeesUsd: o.estFeesUsd,
-      estSlippageUsd: o.estSlippageUsd,
-      netProfitUsd: o.netProfitUsd,
-      netProfitPct: o.netProfitPct,
-      confidenceScore: analysis.score,
-      strategy: o.strategy,
-      detectedAt: o.detectedAt,
-      analysisText: analysis.explanation,
-      isLive: o.isLive,
-    );
+      // Enrich the opportunity with the LLM analysis text + score.
+      final enriched = Opportunity(
+        id: o.id,
+        pair: o.pair,
+        buyExchangeId: o.buyExchangeId,
+        sellExchangeId: o.sellExchangeId,
+        buyPrice: o.buyPrice,
+        sellPrice: o.sellPrice,
+        grossSpreadPct: o.grossSpreadPct,
+        estFeesUsd: o.estFeesUsd,
+        estSlippageUsd: o.estSlippageUsd,
+        netProfitUsd: o.netProfitUsd,
+        netProfitPct: o.netProfitPct,
+        confidenceScore: analysis.score,
+        strategy: o.strategy,
+        detectedAt: o.detectedAt,
+        analysisText: analysis.explanation,
+        isLive: o.isLive,
+      );
 
-    final updated = state.opportunities.map((e) => e.id == o.id ? enriched : e).toList();
-    emit(state.copyWith(opportunities: updated, lastLlmAnalysisAt: DateTime.now()));
+      final updated = state.opportunities.map((e) => e.id == o.id ? enriched : e).toList();
+      emit(state.copyWith(opportunities: updated, lastLlmAnalysisAt: DateTime.now(), llmError: null));
 
-    // If autonomous mode is active, request an execution decision.
-    if (anyAutonomousActive && analysis.score >= 60) {
-      _maybeExecuteAutonomously(enriched, analysis, strategy);
+      // If autonomous mode is active, request an execution decision.
+      if (anyAutonomousActive && analysis.score >= 60) {
+        _maybeExecuteAutonomously(enriched, analysis, strategy);
+      }
+    } catch (e) {
+      _inFlight.remove(o.id);
+      emit(state.copyWith(llmError: 'LLM analysis failed: $e'));
     }
   }
 
@@ -253,28 +268,32 @@ class AppCubit extends HydratedCubit<AppState> {
     final execMode = mode ?? strategy.mode;
 
     // Show a pending state immediately so the user gets feedback.
-    emit(state.copyWith(executing: true));
+    emit(state.copyWith(executing: true, tradeError: null));
 
-    // Attempt real execution.
-    final trade = await _trading.executeArbitrage(
-      opportunity: o,
-      sizeUsd: strategy.maxTradeUsd,
-      mode: execMode,
-      strategyId: strategy.id,
-      strategyName: strategy.name,
-    );
+    try {
+      // Attempt real execution.
+      final trade = await _trading.executeArbitrage(
+        opportunity: o,
+        sizeUsd: strategy.maxTradeUsd,
+        mode: execMode,
+        strategyId: strategy.id,
+        strategyName: strategy.name,
+      );
 
-    emit(state.copyWith(executing: false));
+      emit(state.copyWith(executing: false));
 
-    if (trade == null) return; // shouldn't happen — _failedTrade always returns
+      if (trade == null) return;
 
-    // Record the trade (success or failure).
-    emit(state.copyWith(trades: [trade, ...state.trades]));
-    _llm.tradeHistory = [trade, ...state.trades];
-    _maybeGenerateDebrief(trade);
+      // Record the trade (success or failure).
+      emit(state.copyWith(trades: [trade, ...state.trades]));
+      _llm.tradeHistory = [trade, ...state.trades];
+      _maybeGenerateDebrief(trade);
 
-    // Refresh portfolio after execution.
-    _refreshPortfolio();
+      // Refresh portfolio after execution.
+      _refreshPortfolio();
+    } catch (e) {
+      emit(state.copyWith(executing: false, tradeError: 'Trade execution failed: $e'));
+    }
   }
 
   Future<void> _maybeGenerateDebrief(TradeRecord trade) async {
@@ -321,16 +340,24 @@ class AppCubit extends HydratedCubit<AppState> {
 
   // ── LLM config ──────────────────────────────────────────────────────────────
   Future<void> saveLlmConfig(LlmConfig config, String? apiKey) async {
-    emit(state.copyWith(llmConfig: config));
-    if (apiKey != null && apiKey.isNotEmpty) {
-      await _keyStore.writeApiKey(apiKey);
+    try {
+      emit(state.copyWith(llmConfig: config));
+      if (apiKey != null && apiKey.isNotEmpty) {
+        await _keyStore.writeApiKey(apiKey);
+      }
+      await _checkLlmConfigured();
+    } catch (e) {
+      emit(state.copyWith(tradeError: 'Failed to save LLM config: $e'));
     }
-    await _checkLlmConfigured();
   }
 
   Future<void> clearLlmKey() async {
-    await _keyStore.deleteApiKey();
-    await _checkLlmConfigured();
+    try {
+      await _keyStore.deleteApiKey();
+      await _checkLlmConfigured();
+    } catch (e) {
+      emit(state.copyWith(tradeError: 'Failed to clear LLM key: $e'));
+    }
   }
 
   /// Fetches available models from the configured endpoint. See PRD §7.1.
@@ -348,11 +375,12 @@ class AppCubit extends HydratedCubit<AppState> {
   /// Fetches real portfolio value from connected exchanges. Replaces the
   /// hardcoded demo constant.
   Future<void> _refreshPortfolio() async {
+    emit(state.copyWith(portfolioLoading: true));
     try {
       final value = await _trading.fetchPortfolioValueUsd();
-      emit(state.copyWith(portfolioValue: value));
-    } catch (_) {
-      // Keep the current value if fetch fails
+      emit(state.copyWith(portfolioValue: value, portfolioLoading: false, tradeError: null));
+    } catch (e) {
+      emit(state.copyWith(portfolioLoading: false, tradeError: 'Portfolio refresh failed: $e'));
     }
   }
 
@@ -361,13 +389,21 @@ class AppCubit extends HydratedCubit<AppState> {
 
   // ── Exchange credentials ───────────────────────────────────────────────────
   Future<void> saveExchangeCredentials(ExchangeCredentials creds) async {
-    await _trading.saveCredentials(creds);
-    _refreshPortfolio();
+    try {
+      await _trading.saveCredentials(creds);
+      _refreshPortfolio();
+    } catch (e) {
+      emit(state.copyWith(tradeError: 'Failed to save ${creds.exchangeId} credentials: $e'));
+    }
   }
 
   Future<void> deleteExchangeCredentials(String exchangeId) async {
-    await _trading.deleteCredentials(exchangeId);
-    _refreshPortfolio();
+    try {
+      await _trading.deleteCredentials(exchangeId);
+      _refreshPortfolio();
+    } catch (e) {
+      emit(state.copyWith(tradeError: 'Failed to delete $exchangeId credentials: $e'));
+    }
   }
 
   Future<bool> hasExchangeCredentials(String exchangeId) => _trading.hasCredentials(exchangeId);

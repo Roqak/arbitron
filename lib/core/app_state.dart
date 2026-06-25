@@ -22,6 +22,9 @@ class AppState extends Equatable {
   final String? apiToken;
   final double portfolioValue; // real, fetched from exchanges
   final bool executing; // a trade is being placed right now
+  final bool portfolioLoading; // portfolio fetch in progress
+  final String? llmError; // last LLM analysis error message
+  final String? tradeError; // last trade execution error message
 
   const AppState({
     required this.strategies,
@@ -45,6 +48,9 @@ class AppState extends Equatable {
     this.apiToken,
     this.portfolioValue = 0,
     this.executing = false,
+    this.portfolioLoading = false,
+    this.llmError,
+    this.tradeError,
   });
 
   factory AppState.initial() {
@@ -91,6 +97,9 @@ class AppState extends Equatable {
     String? apiToken,
     double? portfolioValue,
     bool? executing,
+    bool? portfolioLoading,
+    String? llmError,
+    String? tradeError,
   }) {
     return AppState(
       strategies: strategies ?? this.strategies,
@@ -114,6 +123,9 @@ class AppState extends Equatable {
       apiToken: apiToken ?? this.apiToken,
       portfolioValue: portfolioValue ?? this.portfolioValue,
       executing: executing ?? this.executing,
+      portfolioLoading: portfolioLoading ?? this.portfolioLoading,
+      llmError: llmError,
+      tradeError: tradeError,
     );
   }
 
@@ -136,7 +148,7 @@ class AppState extends Equatable {
         autonomousPaused, dailyLossCapUsd, themeBrightness, lastUpdated,
         feedStatuses, feedsConnected, llmConfigured, lastLlmAnalysisAt,
         lastDailySummary, lastDailySummaryAt, apiRunning, apiPort, apiToken,
-        portfolioValue, executing,
+        portfolioValue, executing, portfolioLoading, llmError, tradeError,
       ];
 
   // ── JSON persistence ─────────────────────────────────────────────────────────

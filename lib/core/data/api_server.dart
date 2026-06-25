@@ -26,18 +26,27 @@ class ApiServer {
 
   /// Starts the API server on [port] with the given auth [token].
   Future<void> start({required int port, required String token}) async {
-    if (_server != null) await stop();
-    _token = token;
-    _port = port;
-    final handler = const shelf.Pipeline()
-        .addMiddleware(shelf.logRequests(logger: (msg, isError) => _log(msg)))
-        .addMiddleware(_authMiddleware(token))
-        .addHandler(_router);
-    _server = await io.serve(handler, '0.0.0.0', port);
+    try {
+      if (_server != null) await stop();
+      _token = token;
+      _port = port;
+      final handler = const shelf.Pipeline()
+          .addMiddleware(shelf.logRequests(logger: (msg, isError) => _log(msg)))
+          .addMiddleware(_authMiddleware(token))
+          .addHandler(_router);
+      _server = await io.serve(handler, '0.0.0.0', port);
+    } catch (e) {
+      _server = null;
+      _token = null;
+      _port = null;
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
-    await _server?.close(force: true);
+    try {
+      await _server?.close(force: true);
+    } catch (_) {}
     _server = null;
   }
 

@@ -36,6 +36,12 @@ class PriceFeedService {
 
   Timer? _snapshotTimer;
   bool _started = false;
+  final Map<String, Timer> _reconnectTimers = {};
+  final Map<String, int> _retryCounts = {};
+  static const int _maxReconnectDelay = 30; // seconds
+
+  int _reconnectDelay(int attempt) =>
+      (1 << attempt).clamp(1, _maxReconnectDelay); // exponential backoff: 1, 2, 4, 8, 16, 30...
 
   /// Starts feeds for the given enabled exchanges and pairs. Reconnecting with
   /// a different set tears down the old connections first.
@@ -71,6 +77,11 @@ class PriceFeedService {
     _started = false;
     _snapshotTimer?.cancel();
     _snapshotTimer = null;
+    for (final t in _reconnectTimers.values) {
+      t.cancel();
+    }
+    _reconnectTimers.clear();
+    _retryCounts.clear();
     for (final entry in _channels.entries) {
       try {
         entry.value.sink.close();
@@ -101,6 +112,7 @@ class PriceFeedService {
         (message) {
           if (!_started) return;
           if (feed.currentStatus != FeedStatus.connected) {
+            _retryCounts[feed.exchangeId] = 0; // connected successfully, reset backoff
             feed.setStatus(FeedStatus.connected);
             _feedStatus[feed.exchangeId] = FeedStatus.connected;
             _statusController.add(Map.unmodifiable(_feedStatus));
@@ -118,10 +130,12 @@ class PriceFeedService {
           _statusController.add(Map.unmodifiable(_feedStatus));
         },
         onDone: () {
-          if (_started && feed.currentStatus != FeedStatus.error) {
+          _channels.remove(feed.exchangeId);
+          if (_started) {
             feed.setStatus(FeedStatus.disconnected);
             _feedStatus[feed.exchangeId] = FeedStatus.disconnected;
             _statusController.add(Map.unmodifiable(_feedStatus));
+            _scheduleReconnect(feed.exchangeId);
           }
         },
         cancelOnError: true,
@@ -130,7 +144,26 @@ class PriceFeedService {
       feed.setStatus(FeedStatus.error);
       _feedStatus[feed.exchangeId] = FeedStatus.error;
       _statusController.add(Map.unmodifiable(_feedStatus));
+      // If connection fails entirely, schedule a reconnect too.
+      if (_started) {
+        _scheduleReconnect(feed.exchangeId);
+      }
     }
+  }
+
+  void _scheduleReconnect(String exchangeId) {
+    _reconnectTimers[exchangeId]?.cancel();
+    final retry = (_retryCounts[exchangeId] ?? 0) + 1;
+    _retryCounts[exchangeId] = retry;
+    final delay = _reconnectDelay(retry);
+    _reconnectTimers[exchangeId] = Timer(Duration(seconds: delay), () {
+      final feed = _feeds[exchangeId];
+      if (_started && feed != null) {
+        // Remove any stale channel reference.
+        _channels.remove(exchangeId);
+        _connect(feed);
+      }
+    });
   }
 
   PriceFeed? _buildFeed(String exchangeId, Set<String> pairs) {
